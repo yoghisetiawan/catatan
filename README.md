@@ -46,7 +46,14 @@ karena login Supabase butuh alamat `http://`.)
 
 ## Deploy
 
-Unggah isi folder `public/` ke hosting statis mana saja: Vercel, Netlify, Cloudflare Pages,
+Repo ini otomatis ter-deploy ke **GitHub Pages** setiap ada push ke `main`
+(lihat `.github/workflows/pages.yml`): https://yoghisetiawan.github.io/catatan/
+
+Agar login dan tautan email berfungsi di sana, tambahkan `https://yoghisetiawan.github.io/catatan/`
+ke **Authentication → URL Configuration → Redirect URLs** di Supabase (dan jadikan Site URL bila
+itu alamat utama aplikasi).
+
+Alternatif lain: Unggah isi folder `public/` ke hosting statis mana saja: Vercel, Netlify, Cloudflare Pages,
 GitHub Pages, atau Supabase Storage. Jangan lupa menambahkan domain produksi ke *Redirect URLs*
 di Supabase.
 

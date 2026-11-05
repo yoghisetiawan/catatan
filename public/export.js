@@ -104,7 +104,9 @@
     return out;
   }
 
-  const imageFallback = (b) => (b.src.startsWith("attachment:") ? `[gambar tidak tersedia${b.alt ? ": " + b.alt : ""}]` : `${b.alt || "gambar"} (${b.src})`);
+  // Teks pengganti gambar. `skipped` = pengguna sengaja tidak menyertakan gambar.
+  const imageFallback = (b, skipped) =>
+    b.src.startsWith("attachment:") ? (skipped ? `[gambar${b.alt ? ": " + b.alt : ""}]` : `[gambar tidak tersedia${b.alt ? ": " + b.alt : ""}]`) : `${b.alt || "gambar"} (${b.src})`;
 
   // ---------- Gambar lampiran ----------
   const toDataUrl = (blob) =>
@@ -260,7 +262,7 @@
         case "image": {
           const img = imageFor(images, b);
           if (!img) {
-            children.push(new Paragraph({ children: [new TextRun({ text: imageFallback(b), italics: true, color: "888888" })] }));
+            children.push(new Paragraph({ children: [new TextRun({ text: imageFallback(b, images.skipped), italics: true, color: "888888" })] }));
             break;
           }
           const s = fit(img.width, img.height, 600, 760);
@@ -420,7 +422,7 @@
         case "image": {
           const img = imageFor(images, b);
           if (!img) {
-            content.push({ text: pdfClean(imageFallback(b)), italics: true, color: "#888888", margin: [0, 0, 0, 8] });
+            content.push({ text: pdfClean(imageFallback(b, images.skipped)), italics: true, color: "#888888", margin: [0, 0, 0, 8] });
             break;
           }
           const s = fit(img.width * 0.75, img.height * 0.75, PAGE_W, 600);
@@ -757,7 +759,7 @@
           newSlide(true);
           const img = imageFor(images, raw);
           if (!img) {
-            slide.addText(imageFallback(raw), { x: SL.X, y, w: SL.W, h: 0.6, fontSize: 18, italic: true, color: "888888", margin: 0 });
+            slide.addText(imageFallback(raw, images.skipped), { x: SL.X, y, w: SL.W, h: 0.6, fontSize: 18, italic: true, color: "888888", margin: 0 });
           } else {
             const maxW = SL.W;
             const maxH = 4.8;
@@ -835,6 +837,7 @@
     const blocks = normalizeBlocks(MD.parse(note.content || ""));
     const wantImages = ctx.includeImages !== false && typeof ctx.fetchAttachment === "function" && format !== "xlsx";
     const images = wantImages ? await loadImages(blocks, ctx.fetchAttachment) : new Map();
+    images.skipped = !wantImages && ctx.includeImages === false;
     switch (format) {
       case "docx":
         return toWord(note, blocks, images);

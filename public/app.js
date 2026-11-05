@@ -371,6 +371,8 @@
       state.offline = false;
       saveCache();
       render();
+      if (!realtimeChannel) subscribeRealtime(); // mis. aplikasi dibuka saat offline
+      purgeOldTrash();
       if (dirty.size || pendingDeletes.size) persist(null, true);
       else setStatus("saved");
     } catch (err) {
@@ -414,15 +416,9 @@
     scheduleRemoteRender();
   }
 
-  function onRemoteDelete(payload) {
-    const old = payload.old || {};
-    if (!state.user || !old.id || (old.user_id && old.user_id !== state.user.id)) return;
-    if (dirty.has(old.id) || inflight.has(old.id)) return;
-    const before = notes.length;
-    notes = notes.filter((n) => n.id !== old.id);
-    if (notes.length !== before) scheduleRemoteRender();
-  }
-
+  // Catatan: peristiwa DELETE sengaja tidak dilangganan. Supabase tidak bisa menyaringnya per pengguna
+  // dan tidak menerapkan RLS padanya, sehingga klien akan menerima ID catatan milik pengguna lain.
+  // Penghapusan permanen dari perangkat lain terbawa lewat penyegaran berkala (refreshFromServer).
   function subscribeRealtime() {
     unsubscribeRealtime();
     const id = state.user.id;
@@ -430,7 +426,6 @@
       .channel(`notes-${id}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notes", filter: `user_id=eq.${id}` }, onRemoteUpsert)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notes", filter: `user_id=eq.${id}` }, onRemoteUpsert)
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "notes" }, onRemoteDelete)
       .subscribe((status) => {
         if (status !== "SUBSCRIBED") return;
         // Tersambung ulang setelah terputus: ambil perubahan yang mungkin terlewat.
@@ -740,8 +735,16 @@
     render();
   }
 
+  // Cap waktu perubahan: tidak pernah mundur dari versi yang pernah terlihat perangkat ini.
+  // Trigger database menolak pembaruan yang "lebih lama", jadi jam perangkat yang tertinggal
+  // tidak boleh membuat suntingan terbuang diam-diam.
+  function stamp(n) {
+    n.updatedAt = Math.max(Date.now(), (n.updatedAt || 0) + 1);
+    return n.updatedAt;
+  }
+
   function touch(n) {
-    n.updatedAt = Date.now();
+    stamp(n);
     persist(n);
     renderList();
     updateFooter(n);
@@ -769,14 +772,14 @@
     n.trashed = true;
     n.trashedAt = Date.now();
     n.pinned = false;
-    n.updatedAt = Date.now();
+    stamp(n);
     state.activeId = null;
     persist(n, true);
     render();
     toast("Dipindahkan ke sampah", "Urungkan", () => {
       n.trashed = false;
       n.trashedAt = null;
-      n.updatedAt = Date.now();
+      stamp(n);
       state.activeId = n.id;
       persist(n, true);
       render();
@@ -788,7 +791,7 @@
     if (!n) return;
     n.trashed = false;
     n.trashedAt = null;
-    n.updatedAt = Date.now();
+    stamp(n);
     state.view = "all";
     persist(n, true);
     render();
@@ -808,7 +811,7 @@
   function purgeOldTrash() {
     if (!state.features.v2) return;
     const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
-    const old = notes.filter((n) => n.trashed && n.trashedAt && n.trashedAt < cutoff);
+    const old = notes.filter((n) => n.trashed && (n.trashedAt || n.updatedAt) < cutoff);
     if (!old.length) return;
     old.forEach(permanentlyDelete);
     render();
@@ -1167,7 +1170,7 @@
     if (!n) return;
     if (state.offline || !navigator.onLine) return toast("Sambungkan ke internet untuk mengubah status berbagi.");
     n.shareId = n.shareId ? null : crypto.randomUUID();
-    n.updatedAt = Date.now();
+    stamp(n);
     el.shareToggleBtn.disabled = true;
     persist(n, true);
     await flush();
@@ -1316,6 +1319,10 @@
 
   // ---------- Halaman catatan yang dibagikan ----------
   async function bootShared(shareId) {
+    const robots = document.createElement("meta"); // jangan biarkan mesin pencari mengindeks catatan yang dibagikan
+    robots.name = "robots";
+    robots.content = "noindex, nofollow";
+    document.head.appendChild(robots);
     document.body.classList.remove("booting");
     document.body.classList.add("sharing");
     el.sharedView.classList.remove("hidden");
@@ -1464,7 +1471,7 @@
     const n = activeNote();
     if (!n) return;
     n.pinned = !n.pinned;
-    n.updatedAt = Date.now();
+    stamp(n);
     persist(n);
     render();
   });
@@ -1735,6 +1742,10 @@
     }
   });
   setInterval(() => state.user && renderList(), 60_000); // refresh relative times
+  // Penyegaran berkala (menangkap penghapusan permanen dari perangkat lain, yang tidak dikirim lewat realtime).
+  setInterval(() => {
+    if (state.user && document.visibilityState === "visible" && navigator.onLine && Date.now() - lastFetchAt > 4 * 60_000) refreshFromServer();
+  }, 60_000);
 
   // ---------- Auth ----------
   const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;

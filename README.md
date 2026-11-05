@@ -106,8 +106,12 @@ Tabel ditulis dengan sintaks Markdown:
 ## Email akun: template Indonesia dan SMTP
 
 Email konfirmasi, atur ulang kata sandi, dan ganti email dikirim Supabase dengan teks bawaan (Inggris).
-Template berbahasa Indonesia ada di [`supabase/email-templates/`](supabase/email-templates/). Tempel di
-**Supabase → Authentication → Emails → Templates** (tab *Preview* untuk melihat hasilnya), lalu **Save**:
+Template berbahasa Indonesia ada di [`supabase/email-templates/`](supabase/email-templates/).
+
+> **Syarat:** Supabase hanya mengizinkan template diedit **setelah SMTP sendiri aktif** (lihat bagian SMTP di bawah).
+> Selama masih memakai email bawaan, halaman Templates hanya menampilkan banner *"Set up custom SMTP to edit templates"*.
+
+Setelah SMTP aktif, tempel di **Supabase → Authentication → Emails → Templates** (tab *Preview* untuk melihat hasilnya), lalu **Save**:
 
 | Template di Supabase | File | Subject |
 |---|---|---|
@@ -118,7 +122,8 @@ Template berbahasa Indonesia ada di [`supabase/email-templates/`](supabase/email
 Template memakai variabel Supabase `{{ .ConfirmationURL }}`, `{{ .SiteURL }}`, `{{ .Email }}`, `{{ .NewEmail }}`; jangan dihapus.
 *Magic link*, *Invite user*, dan *Reauthentication* tidak dipakai aplikasi ini, jadi dibiarkan bawaan.
 
-Email bawaan Supabase hanya sampai ke anggota tim project (sekitar 2 email/jam). Agar bisa mengirim ke siapa saja,
+Email bawaan Supabase hanya sampai ke anggota tim project dan dibatasi **2 email per jam untuk seluruh project**
+(batas ini terkunci di halaman Rate Limits sampai SMTP sendiri aktif; setelahnya bawaannya 30 per jam dan bisa diubah). Agar bisa mengirim ke siapa saja,
 pasang SMTP sendiri di **Authentication → Emails → SMTP Settings**. Contoh Resend (butuh domain milik sendiri yang
 sudah diverifikasi): host `smtp.resend.com`, port `465`, username `resend`, password = API key, sender email di domain
 terverifikasi. Kunci API hanya ditempel di Supabase, jangan di repo.

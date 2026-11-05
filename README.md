@@ -29,6 +29,8 @@ catatan/
 │   └── config.js        # URL + kunci anon Supabase (isi sendiri)
 │   ├── markdown.js      # parser Markdown bersama (pratinjau + ekspor)
 │   ├── export.js        # ekspor Word / PDF / Excel / PowerPoint
+│   ├── privasi.html     # Kebijakan Privasi (ditautkan dari form login)
+│   ├── ketentuan.html   # Ketentuan Layanan
 │   ├── sw.js            # service worker (offline / PWA)
 │   ├── manifest.webmanifest
 │   └── icons/
@@ -110,6 +112,12 @@ Tombolnya muncul otomatis di halaman masuk begitu provider-nya diaktifkan di Sup
 2. **Credentials → Create credentials → OAuth client ID** → tipe *Web application*.
    Di *Authorized redirect URIs* isi: `https://tgztswbgnhevyxaxbawz.supabase.co/auth/v1/callback`
 3. Salin *Client ID* dan *Client secret* ke Supabase **Authentication → Sign In / Providers → Google**, aktifkan, simpan.
+   Tempel secret dengan bersih (kolom dikosongkan dulu). Google hanya mengizinkan 2 secret per client dan tidak menampilkan secret lama lagi.
+4. Di **Google Auth Platform → Branding** isi *Application home page* (`https://catatan-wt5e.vercel.app`),
+   *privacy policy* (`https://catatan-wt5e.vercel.app/privasi.html`), dan *terms* (`https://catatan-wt5e.vercel.app/ketentuan.html`).
+   **Jangan unggah logo**: logo memicu kewajiban verifikasi aplikasi.
+5. Di **Audience** klik **Publish app** agar semua orang bisa masuk (selama *Testing*, hanya *Test users*). Scope dasar
+   (`openid`, email, profil) tidak perlu verifikasi.
 
 **GitHub**
 1. Buka https://github.com/settings/developers → **New OAuth App**.

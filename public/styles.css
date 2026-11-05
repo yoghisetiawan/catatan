@@ -572,6 +572,15 @@ body.sharing .auth, body.sharing .app { display: none !important; }
   .print-area a { color: #000; }
 }
 
+/* ---------- Halaman hukum (privasi, ketentuan) ---------- */
+.auth-legal { margin: 18px 0 0; font-size: 12px; line-height: 1.55; color: var(--faint); text-align: center; }
+.auth-legal a, .legal-links a, .legal-foot a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.auth-legal a:hover, .legal-links a:hover, .legal-foot a:hover { color: var(--accent); }
+.legal-links { margin-top: 16px; text-align: center; }
+.legal .preview h2 { font-size: 1.12em; margin-top: 1.9em; }
+.legal .preview li { margin-bottom: .45em; }
+.legal-foot { margin: 28px 0 0; padding-top: 18px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1080px) {
   .app { grid-template-columns: 72px 300px 1fr; }

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kebijakan Privasi · Catatan</title>
+  <meta name="description" content="Kebijakan Privasi aplikasi Catatan: data apa yang disimpan, di mana, dan bagaimana kamu mengendalikannya." />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; base-uri 'none'; form-action 'none'" />
+  <meta name="theme-color" content="#5b5bd6" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="legal.js"></script>
+</head>
+<body>
+  <div class="shared-view">
+    <header class="shared-head">
+      <a class="brand" href="./">
+        <div class="brand-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h4"/></svg>
+        </div>
+        <span>Catatan</span>
+      </a>
+      <a class="btn-ghost" href="./">Kembali ke aplikasi</a>
+    </header>
+
+    <article class="shared-card legal">
+      <div class="shared-meta">Terakhir diperbarui: 5 November 2026</div>
+      <h1>Kebijakan Privasi</h1>
+      <div class="preview">
+        <p>Catatan adalah aplikasi catatan pribadi di <b>catatan-wt5e.vercel.app</b>. Halaman ini menjelaskan data apa yang kami simpan, untuk apa, di mana, dan bagaimana kamu mengendalikannya. Kami berusaha menjelaskannya sesederhana mungkin.</p>
+
+        <h2>1. Data yang kami simpan</h2>
+        <ul>
+          <li><b>Akun:</b> alamat email dan kata sandi. Kata sandi tidak disimpan apa adanya, melainkan dalam bentuk hash oleh layanan autentikasi kami.</li>
+          <li><b>Jika kamu masuk dengan Google:</b> Google memberi kami alamat email dan profil dasar (nama dan foto profil). Aplikasi hanya menampilkan emailmu. Kami tidak meminta akses ke Gmail, Drive, kontak, atau data Google lainnya.</li>
+          <li><b>Isi catatan:</b> judul, isi, tag, warna, status sematan dan sampah, serta tanggal dibuat dan diubah.</li>
+          <li><b>Gambar</b> yang kamu tempel ke catatan.</li>
+          <li><b>Riwayat versi:</b> salinan lama sebuah catatan (maksimal 50 versi per catatan), dipakai agar kamu bisa memulihkan isi yang tertimpa.</li>
+          <li><b>Pengaturan:</b> tema terang/gelap dan urutan daftar, disimpan di perangkatmu.</li>
+        </ul>
+        <p>Kami <b>tidak</b> memasang iklan, tidak memakai pelacak atau analitik pihak ketiga di aplikasi ini, dan tidak menjual data kamu.</p>
+
+        <h2>2. Untuk apa data dipakai</h2>
+        <p>Hanya untuk menjalankan aplikasi: membuatkan akun, menyimpan dan menyinkronkan catatanmu antar perangkat, mengirim email konfirmasi atau pengaturan ulang kata sandi, dan menjaga keamanan layanan. Isi catatanmu tidak dibaca atau dipakai untuk tujuan lain.</p>
+
+        <h2>3. Di mana data disimpan dan siapa yang memprosesnya</h2>
+        <ul>
+          <li><b>Supabase</b>: database, autentikasi, penyimpanan gambar, dan pengiriman email akun. Basis data kami berada di wilayah Singapura (AWS ap-southeast-1).</li>
+          <li><b>Vercel</b>: menyajikan situs ini. Seperti server web pada umumnya, Vercel dapat mencatat alamat IP dan data teknis permintaan.</li>
+          <li><b>Google</b>: bila kamu memilih masuk dengan Google, dan juga untuk memuat font (Google Fonts).</li>
+          <li><b>jsDelivr</b>: jaringan pengantar (CDN) untuk pustaka kode, termasuk pustaka ekspor Word, PDF, Excel, dan PowerPoint yang dimuat saat dipakai.</li>
+        </ul>
+        <p>Pihak-pihak tersebut menerima data teknis dasar (misalnya alamat IP dan jenis browser) saat browsermu mengakses layanan mereka. Mereka memiliki kebijakan privasi masing-masing. Ekspor ke Word, PDF, Excel, dan PowerPoint dibuat di dalam browsermu, bukan di server kami.</p>
+
+        <h2>4. Penyimpanan di perangkatmu</h2>
+        <p>Aplikasi menyimpan di browser: token sesi login, salinan catatanmu agar bisa dibuka dan diedit saat offline, pengaturan tampilan, dan cache file aplikasi (service worker). Salinan catatan dan sesi dihapus saat kamu keluar dari akun. Kami tidak memakai cookie iklan.</p>
+
+        <h2>5. Berbagi lewat link</h2>
+        <p>Catatan hanya terlihat olehmu, <b>kecuali</b> kamu membuat link berbagi. Siapa pun yang memiliki link itu bisa membaca catatan tersebut (termasuk gambarnya) tanpa login, sampai kamu menghentikan berbagi atau menghapus catatannya. Link berisi kode acak yang sulit ditebak, dan halaman berbagi tidak diindeks mesin pencari. Bagikan link hanya kepada orang yang kamu percaya.</p>
+
+        <h2>6. Berapa lama data disimpan</h2>
+        <ul>
+          <li>Selama akunmu ada.</li>
+          <li>Catatan di <b>Sampah</b> dihapus otomatis setelah 30 hari (proses berjalan saat aplikasi dibuka), atau lebih cepat bila kamu menghapusnya sendiri.</li>
+          <li>Setelah kamu menghapus akun, catatan, riwayat versi, dan gambarmu dihapus permanen. Salinan cadangan sistem milik penyedia infrastruktur dapat bertahan untuk waktu terbatas sebelum benar-benar hilang.</li>
+        </ul>
+
+        <h2>7. Kendali dan hak kamu</h2>
+        <ul>
+          <li><b>Melihat dan mengunduh datamu:</b> Pengaturan akun → <i>Ekspor semua catatan (JSON)</i> atau <i>Ekspor semua ke Excel</i>. Setiap catatan juga bisa diekspor ke Word, PDF, PowerPoint, atau Markdown.</li>
+          <li><b>Mengubah data akun:</b> ganti email dan kata sandi di Pengaturan akun.</li>
+          <li><b>Menghapus datamu:</b> Pengaturan akun → <i>Hapus akun</i> menghapus akun beserta seluruh isinya.</li>
+          <li><b>Mencabut akses Google:</b> kamu bisa mencabutnya kapan saja di pengaturan akun Google (bagian keamanan, aplikasi pihak ketiga).</li>
+        </ul>
+        <p>Kami berusaha memenuhi hak-hakmu sesuai peraturan perlindungan data pribadi yang berlaku di Indonesia. Bila kamu butuh bantuan, hubungi kami lewat kontak di bawah.</p>
+
+        <h2>8. Keamanan</h2>
+        <p>Semua koneksi memakai HTTPS. Akses ke data dibatasi di tingkat database sehingga setiap akun hanya dapat membaca dan mengubah catatannya sendiri, dan gambar disimpan di penyimpanan privat. Tidak ada sistem yang sepenuhnya aman, jadi gunakan kata sandi yang kuat dan unik, dan ekspor catatan penting secara berkala sebagai cadangan.</p>
+
+        <h2>9. Anak-anak</h2>
+        <p>Catatan tidak ditujukan bagi anak di bawah 13 tahun. Bila kamu mengetahui ada anak di bawah usia itu yang memiliki akun, beri tahu kami agar akunnya dihapus.</p>
+
+        <h2>10. Perubahan kebijakan</h2>
+        <p>Kebijakan ini dapat diperbarui. Tanggal pembaruan terakhir tertera di bagian atas halaman. Perubahan penting akan kami sampaikan di dalam aplikasi atau lewat email.</p>
+
+        <h2>11. Kontak</h2>
+        <p>Pertanyaan atau permintaan terkait data pribadi: buka laporan di <a href="https://github.com/yoghisetiawan/catatan/issues" target="_blank" rel="noopener noreferrer">github.com/yoghisetiawan/catatan/issues</a>. Jangan menuliskan kata sandi atau isi catatan di laporan publik itu.</p>
+      </div>
+      <p class="legal-foot">Lihat juga <a href="ketentuan.html">Ketentuan Layanan</a>.</p>
+    </article>
+  </div>
+</body>
+</html>

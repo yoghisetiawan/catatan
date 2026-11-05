@@ -14,7 +14,8 @@ tanpa build step dan tanpa server sendiri.
 - **Bagikan lewat link** (hanya baca, tanpa login) dan hentikan kapan saja
 - **Riwayat versi**: versi lama tersimpan otomatis, bisa dipulihkan
 - Sampah dengan hapus otomatis setelah 30 hari + tombol kosongkan sampah
-- Unduh catatan sebagai Markdown atau cetak/simpan PDF; ekspor/impor semua catatan (JSON)
+- **Ekspor ke Word (.docx), PDF, Excel (.xlsx), PowerPoint (.pptx)** dan Markdown; atau cetak. Ekspor semua catatan ke Excel/JSON dari Pengaturan
+- **Tabel Markdown** (tombol tabel di toolbar); di Excel, tiap tabel jadi lembar sendiri
 - Akun: daftar/masuk email, **login Google/GitHub**, lupa sandi, ganti sandi/email, hapus akun
 
 ## Struktur
@@ -26,6 +27,8 @@ catatan/
 │   ├── styles.css
 │   ├── app.js
 │   └── config.js        # URL + kunci anon Supabase (isi sendiri)
+│   ├── markdown.js      # parser Markdown bersama (pratinjau + ekspor)
+│   ├── export.js        # ekspor Word / PDF / Excel / PowerPoint
 │   ├── sw.js            # service worker (offline / PWA)
 │   ├── manifest.webmanifest
 │   └── icons/
@@ -75,6 +78,27 @@ tanpa build step, folder `public/` yang disajikan, plus header keamanan (CSP, no
 Agar login dan tautan email berfungsi, di Supabase **Authentication → URL Configuration**:
 - *Site URL*: `https://catatan-wt5e.vercel.app/`
 - *Redirect URLs*: `https://catatan-wt5e.vercel.app/**` (dan `http://localhost:8080/**` untuk pengembangan)
+
+## Ekspor ke Word, PDF, Excel, PowerPoint
+
+Buka menu **⋯ → Ekspor** pada sebuah catatan. File dibuat langsung di browser (tidak dikirim ke server mana pun).
+
+| Format | Hasil |
+|---|---|
+| Word | Judul, heading, daftar, checklist (☐/☑), kutipan, kode, tabel, tautan, dan gambar |
+| PDF | Tata letak rapi A4 dengan nomor halaman. Emoji dibuang karena font PDF tidak mendukungnya |
+| Excel | Lembar "Catatan": tiap poin/tugas jadi baris (kolom Jenis, Isi, Status). Tiap tabel Markdown jadi lembar sendiri; angka dikenali sebagai angka |
+| PowerPoint | Slide judul, lalu satu slide per judul `#`/`##`. Isi panjang otomatis dipecah; tiap gambar mendapat slide sendiri |
+
+Pustaka ekspor (docx, pdfmake, ExcelJS, PptxGenJS) dimuat dari jsDelivr **hanya saat dipakai**, dengan versi tetap dan hash SRI, lalu disimpan oleh service worker sehingga ekspor juga jalan offline setelah pernah dipakai sekali. Versi dan hash ada di bagian atas `public/export.js`.
+
+Tabel ditulis dengan sintaks Markdown:
+
+```
+| Item | Jumlah |
+| --- | ---: |
+| Konsumsi | 1500000 |
+```
 
 ## Login Google / GitHub (opsional)
 

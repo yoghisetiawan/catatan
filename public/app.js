@@ -96,6 +96,11 @@
     historyTitle: $("#historyTitle"),
     historyContent: $("#historyContent"),
     printArea: $("#printArea"),
+    exportDialog: $("#exportDialog"),
+    exportGrid: $("#exportGrid"),
+    exportImages: $("#exportImages"),
+    exportMsg: $("#exportMsg"),
+    setExportXlsxBtn: $("#setExportXlsxBtn"),
   };
 
   // ---------- State ----------
@@ -461,6 +466,7 @@
         "- [ ] Mencari catatan dengan cepat",
         "- [ ] Menempel gambar langsung ke catatan",
         "- [ ] Membagikan catatan lewat link (menu ⋯)",
+        "- [ ] Mengekspor ke Word, PDF, Excel, atau PowerPoint (menu ⋯)",
         "",
         "## Pintasan keyboard",
         "- `N` — catatan baru",
@@ -498,6 +504,8 @@
       .replace(/```[\s\S]*?```/g, " ")
       .replace(/^\s*[-*+]\s+\[[ xX]\]\s+/gm, "")
       .replace(/^\s*(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
+      .replace(/^\s*\|?[\s:|-]*-[\s:|-]*\|[\s:|-]*$/gm, " ")
+      .replace(/\|/g, " ")
       .replace(/!\[([^\]]*)\]\([^)]+\)/g, "[gambar] ")
       .replace(/[*_~`]/g, "")
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
@@ -529,94 +537,8 @@
     new Date(ts).toLocaleString("id-ID", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
   // ---------- Markdown ----------
-  function inline(s) {
-    return s
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
-      .replace(/!\[([^\]]*)\]\((attachment:[A-Za-z0-9/_.-]+|https:\/\/[^\s)]+)\)/g, (m, alt, src) =>
-        src.startsWith("attachment:")
-          ? `<img alt="${alt}" data-attachment="${src.slice(11)}" class="img-loading" loading="lazy">`
-          : `<img alt="${alt}" src="${src}" loading="lazy">`
-      )
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
-      .replace(/~~([^~]+)~~/g, "<del>$1</del>")
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-      .replace(/(^|\s)(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
-  }
-
-  function renderMarkdown(md) {
-    const lines = md.split("\n");
-    let html = "";
-    let list = null; // "ul" | "ol"
-    let para = [];
-    let inCode = false;
-    let code = [];
-
-    const flushPara = () => {
-      if (para.length) html += `<p>${para.map(inline).join("<br>")}</p>`;
-      para = [];
-    };
-    const closeList = () => {
-      if (list) html += `</${list}>`;
-      list = null;
-    };
-    const openList = (type) => {
-      if (list !== type) {
-        closeList();
-        html += `<${type}>`;
-        list = type;
-      }
-    };
-
-    lines.forEach((raw, i) => {
-      if (/^```/.test(raw.trim())) {
-        if (inCode) {
-          html += `<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`;
-          code = [];
-          inCode = false;
-        } else {
-          flushPara();
-          closeList();
-          inCode = true;
-        }
-        return;
-      }
-      if (inCode) return code.push(raw);
-
-      const line = escapeHtml(raw);
-      let m;
-      if (!line.trim()) {
-        flushPara();
-        closeList();
-      } else if ((m = line.match(/^(#{1,3})\s+(.*)$/))) {
-        flushPara(); closeList();
-        html += `<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`;
-      } else if (/^(-{3,}|\*{3,})$/.test(line.trim())) {
-        flushPara(); closeList();
-        html += "<hr>";
-      } else if ((m = line.match(/^&gt;\s?(.*)$/))) {
-        flushPara(); closeList();
-        html += `<blockquote>${inline(m[1])}</blockquote>`;
-      } else if ((m = line.match(/^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/))) {
-        flushPara(); openList("ul");
-        const done = m[1].toLowerCase() === "x";
-        html += `<li class="task${done ? " done" : ""}"><input type="checkbox" data-line="${i}"${done ? " checked" : ""}><span>${inline(m[2])}</span></li>`;
-      } else if ((m = line.match(/^\s*[-*+]\s+(.*)$/))) {
-        flushPara(); openList("ul");
-        html += `<li>${inline(m[1])}</li>`;
-      } else if ((m = line.match(/^\s*\d+\.\s+(.*)$/))) {
-        flushPara(); openList("ol");
-        html += `<li>${inline(m[1])}</li>`;
-      } else {
-        closeList();
-        para.push(line);
-      }
-    });
-    if (inCode) html += `<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`;
-    flushPara();
-    closeList();
-    return html || '<p style="color:var(--faint)">Belum ada isi.</p>';
-  }
+  // Parser ada di markdown.js (dipakai bersama oleh pratinjau dan ekspor).
+  const renderMarkdown = (md) => CatatanMarkdown.render(md);
 
   // ---------- Filtering ----------
   function visibleNotes() {
@@ -1084,6 +1006,14 @@
       case "ol": prefixLines((i) => `${i + 1}. `, /^\s*\d+\. /); break;
       case "task": prefixLines(() => "- [ ] ", /^\s*[-*+] \[[ xX]\] /); break;
       case "quote": prefixLines(() => "> ", /^\s*> /); break;
+      case "table": {
+        const tpl = "| Kolom 1 | Kolom 2 |\n| --- | --- |\n|  |  |";
+        const lead = s > 0 && v[s - 1] !== "\n" ? "\n\n" : s > 0 && v[s - 2] !== "\n" ? "\n" : "";
+        ta.setRangeText(lead + tpl + "\n", s, e, "end");
+        const at = s + lead.length + 2;
+        ta.setSelectionRange(at, at + "Kolom 1".length);
+        break;
+      }
       case "link": {
         const text = sel || "teks tautan";
         const url = "https://";
@@ -1138,6 +1068,76 @@
     document.title = safeFileName(n.title); // dipakai sebagai nama file PDF
     window.print();
     document.title = oldTitle;
+  }
+
+  // ---------- Ekspor (Word, PDF, Excel, PowerPoint) ----------
+  const EXPORT_FORMATS = {
+    docx: { label: "Word", ext: "docx" },
+    pdf: { label: "PDF", ext: "pdf" },
+    xlsx: { label: "Excel", ext: "xlsx" },
+    pptx: { label: "PowerPoint", ext: "pptx" },
+  };
+  let exporting = false;
+
+  async function fetchAttachment(path) {
+    const { data, error } = await sb.storage.from(ATTACH_BUCKET).download(path);
+    return error ? null : data;
+  }
+
+  function setExportMsg(text, kind = "") {
+    el.exportMsg.textContent = text;
+    el.exportMsg.className = `set-msg ${kind}`;
+  }
+  const setExportBusy = (busy) => el.exportGrid.querySelectorAll("button").forEach((b) => (b.disabled = busy));
+
+  function openExport() {
+    if (!activeNote()) return;
+    setExportMsg("");
+    setExportBusy(false);
+    el.exportImages.closest("label").classList.toggle("hidden", !state.features.v2);
+    el.exportDialog.showModal();
+  }
+
+  async function runExport(format) {
+    const n = activeNote();
+    if (!n || exporting) return;
+    if (format === "md") {
+      el.exportDialog.close();
+      return exportMarkdown();
+    }
+    const f = EXPORT_FORMATS[format];
+    exporting = true;
+    setExportBusy(true);
+    setExportMsg(`Menyiapkan ${f.label}…`);
+    try {
+      const blob = await CatatanExport.exportNote(format, n, {
+        fetchAttachment,
+        includeImages: el.exportImages.checked && state.features.v2 && navigator.onLine,
+      });
+      downloadBlob(blob, `${safeFileName(n.title)}.${f.ext}`);
+      el.exportDialog.close();
+      toast(`Catatan diunduh sebagai ${f.label} (.${f.ext})`);
+    } catch (err) {
+      console.error("Ekspor gagal:", err);
+      setExportMsg(err.message || "Gagal membuat file.", "err");
+    } finally {
+      exporting = false;
+      setExportBusy(false);
+    }
+  }
+
+  async function exportAllExcel() {
+    const list = notes.filter((n) => !n.trashed);
+    if (!list.length) return setSettingsMsg("Belum ada catatan untuk diekspor.", "err");
+    setSettingsMsg("Menyiapkan Excel…");
+    try {
+      const blob = await CatatanExport.exportAllNotes(list);
+      downloadBlob(blob, `catatan-semua-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      setSettingsMsg(`${list.length} catatan diekspor ke Excel.`, "ok");
+    } catch (err) {
+      console.error("Ekspor gagal:", err);
+      setSettingsMsg(err.message || "Gagal membuat file.", "err");
+    }
   }
 
   // ---------- Berbagi lewat link ----------
@@ -1589,8 +1589,15 @@
     const b = e.target.closest("[data-action]");
     if (!b) return;
     toggleMenu(false);
-    ({ share: openShare, history: openHistory, "export-md": exportMarkdown, print: printNote })[b.dataset.action]();
+    ({ share: openShare, history: openHistory, export: openExport, print: printNote })[b.dataset.action]();
   });
+
+  // Ekspor
+  el.exportGrid.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-format]");
+    if (b) runExport(b.dataset.format);
+  });
+  el.setExportXlsxBtn.addEventListener("click", exportAllExcel);
 
   // Berbagi
   el.shareToggleBtn.addEventListener("click", toggleShare);

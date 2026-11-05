@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Catatan</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co http://localhost:54321 http://127.0.0.1:54321; base-uri 'none'; form-action 'self'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co http://localhost:54321 http://127.0.0.1:54321; worker-src 'self' blob:; base-uri 'none'; form-action 'self'" />
   <meta name="referrer" content="same-origin" />
   <meta name="theme-color" content="#5b5bd6" />
   <meta name="description" content="Aplikasi catatan modern: Markdown, tag, gambar, berbagi, dan sinkron antar perangkat." />
@@ -203,9 +203,9 @@
                 Riwayat versi
               </button>
               <hr />
-              <button role="menuitem" data-action="export-md">
+              <button role="menuitem" data-action="export">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M12 11v6M9 14l3 3 3-3"/></svg>
-                Unduh sebagai Markdown
+                Ekspor: Word, PDF, Excel, PPT…
               </button>
               <button role="menuitem" data-action="print">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
@@ -241,6 +241,9 @@
             </button>
             <button data-fmt="code" title="Kode">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></svg>
+            </button>
+            <button data-fmt="table" title="Tabel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/></svg>
             </button>
             <button data-fmt="link" title="Tautan">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -319,6 +322,7 @@
         <div class="set-row">
           <button class="btn-secondary" id="setExportBtn" type="button">Ekspor semua catatan (JSON)</button>
           <button class="btn-secondary" id="setImportBtn" type="button">Impor (JSON)</button>
+          <button class="btn-secondary" id="setExportXlsxBtn" type="button">Ekspor semua ke Excel</button>
         </div>
       </section>
 
@@ -334,6 +338,41 @@
       <div class="set-row set-footer">
         <button class="btn-secondary" id="setLogoutBtn" type="button">Keluar dari akun</button>
       </div>
+    </div>
+  </dialog>
+
+  <!-- Ekspor -->
+  <dialog class="dialog dialog-sm" id="exportDialog">
+    <form method="dialog" class="dialog-head">
+      <h2>Ekspor catatan</h2>
+      <button class="icon-btn" value="close" title="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </form>
+    <div class="dialog-body">
+      <p class="set-sub">Pilih format file. File dibuat langsung di perangkatmu lalu diunduh.</p>
+      <div class="export-grid" id="exportGrid">
+        <button class="export-card" data-format="docx">
+          <span class="ex-ico ex-word">W</span>
+          <span class="ex-text"><b>Word</b><small>Dokumen .docx dengan judul, daftar, tabel, dan gambar</small></span>
+        </button>
+        <button class="export-card" data-format="pdf">
+          <span class="ex-ico ex-pdf">PDF</span>
+          <span class="ex-text"><b>PDF</b><small>Siap dibagikan dan dicetak</small></span>
+        </button>
+        <button class="export-card" data-format="xlsx">
+          <span class="ex-ico ex-excel">X</span>
+          <span class="ex-text"><b>Excel</b><small>Tiap poin jadi baris; tabel Markdown jadi lembar sendiri</small></span>
+        </button>
+        <button class="export-card" data-format="pptx">
+          <span class="ex-ico ex-ppt">P</span>
+          <span class="ex-text"><b>PowerPoint</b><small>Tiap judul (# atau ##) jadi satu slide</small></span>
+        </button>
+        <button class="export-card" data-format="md">
+          <span class="ex-ico ex-md">MD</span>
+          <span class="ex-text"><b>Markdown</b><small>Teks polos .md</small></span>
+        </button>
+      </div>
+      <label class="check-row"><input type="checkbox" id="exportImages" checked /> Sertakan gambar (Word, PDF, PowerPoint)</label>
+      <div class="set-msg" id="exportMsg" role="status"></div>
     </div>
   </dialog>
 
@@ -381,6 +420,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.min.js"
           integrity="sha384-gnyZit14c5lnGcarmA166QQjjJXpucw25ogZXuwH3HxxY904zHkBqmxVpelsPorb"
           crossorigin="anonymous"></script>
+  <script src="markdown.js"></script>
+  <script src="export.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

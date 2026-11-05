@@ -308,6 +308,12 @@ mark { background: #ffe58a; color: inherit; border-radius: 3px; padding: 0 1px; 
 .preview li.task input { margin-top: .45em; accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
 .preview li.task.done span { text-decoration: line-through; color: var(--faint); }
 .preview hr { border: 0; border-top: 1px solid var(--border); margin: 1.6em 0; }
+.preview .table-wrap { overflow-x: auto; margin: 0 0 1em; border: 1px solid var(--border); border-radius: 10px; }
+.preview table { border-collapse: collapse; width: 100%; font-size: .95em; }
+.preview th, .preview td { padding: 8px 12px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); text-align: left; vertical-align: top; }
+.preview th:last-child, .preview td:last-child { border-right: 0; }
+.preview tbody tr:last-child td { border-bottom: 0; }
+.preview th { background: var(--hover); font-weight: 600; white-space: nowrap; }
 
 .editor-footer {
   display: flex; justify-content: space-between; gap: 12px;
@@ -536,6 +542,25 @@ body.sharing .auth, body.sharing .app { display: none !important; }
 .shared-card h1 { font-size: 30px; letter-spacing: -.025em; margin: 6px 0 22px; }
 .shared-meta { color: var(--faint); font-size: 12.5px; }
 .shared-card .preview li.task input { pointer-events: none; }
+
+/* ---------- Export dialog ---------- */
+.export-grid { display: grid; gap: 8px; margin: 14px 0 12px; }
+.export-card {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; text-align: left;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2);
+  transition: border-color .12s, background .12s;
+}
+.export-card:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+.ex-ico {
+  width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+  display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; letter-spacing: -.01em;
+}
+.ex-word { background: #2b579a; } .ex-pdf { background: #d93025; font-size: 12px; }
+.ex-excel { background: #217346; } .ex-ppt { background: #d24726; } .ex-md { background: #6b7280; font-size: 13px; }
+.ex-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ex-text small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.check-row input { accent-color: var(--accent); }
 
 /* ---------- Print ---------- */
 .print-area { display: none; }

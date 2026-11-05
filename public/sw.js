@@ -1,12 +1,14 @@
 // Service worker Catatan: membuat aplikasi bisa dibuka saat offline dan dipasang di HP.
 // Naikkan VERSION setiap kali daftar SHELL berubah.
-const VERSION = "catatan-v2";
+const VERSION = "catatan-v3";
 const SUPABASE_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.min.js";
 const SHELL = [
   "./",
   "index.html",
   "styles.css",
   "app.js",
+  "markdown.js",
+  "export.js",
   "config.js",
   "manifest.webmanifest",
   "icons/icon.svg",

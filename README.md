@@ -36,7 +36,8 @@ catatan/
 │   └── icons/
 ├── supabase/
 │   ├── schema.sql                     # tabel notes + kebijakan RLS
-│   └── migrations/002_fitur_baru.sql  # gambar, berbagi, riwayat, realtime, hapus akun
+│   ├── migrations/002_fitur_baru.sql  # gambar, berbagi, riwayat, realtime, hapus akun
+│   └── email-templates/               # template email berbahasa Indonesia (tempel manual di Supabase)
 └── vercel.json          # konfigurasi hosting Vercel
 ```
 
@@ -101,6 +102,26 @@ Tabel ditulis dengan sintaks Markdown:
 | --- | ---: |
 | Konsumsi | 1500000 |
 ```
+
+## Email akun: template Indonesia dan SMTP
+
+Email konfirmasi, atur ulang kata sandi, dan ganti email dikirim Supabase dengan teks bawaan (Inggris).
+Template berbahasa Indonesia ada di [`supabase/email-templates/`](supabase/email-templates/). Tempel di
+**Supabase → Authentication → Emails → Templates** (tab *Preview* untuk melihat hasilnya), lalu **Save**:
+
+| Template di Supabase | File | Subject |
+|---|---|---|
+| Confirm sign up | `confirm-signup.html` | `Konfirmasi emailmu untuk Catatan` |
+| Reset password | `reset-password.html` | `Atur ulang kata sandi Catatan` |
+| Change email address | `change-email.html` | `Konfirmasi perubahan email Catatan` |
+
+Template memakai variabel Supabase `{{ .ConfirmationURL }}`, `{{ .SiteURL }}`, `{{ .Email }}`, `{{ .NewEmail }}`; jangan dihapus.
+*Magic link*, *Invite user*, dan *Reauthentication* tidak dipakai aplikasi ini, jadi dibiarkan bawaan.
+
+Email bawaan Supabase hanya sampai ke anggota tim project (sekitar 2 email/jam). Agar bisa mengirim ke siapa saja,
+pasang SMTP sendiri di **Authentication → Emails → SMTP Settings**. Contoh Resend (butuh domain milik sendiri yang
+sudah diverifikasi): host `smtp.resend.com`, port `465`, username `resend`, password = API key, sender email di domain
+terverifikasi. Kunci API hanya ditempel di Supabase, jangan di repo.
 
 ## Login Google / GitHub (opsional)
 

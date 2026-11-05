@@ -57,15 +57,66 @@
     userAvatar: $("#userAvatar"),
     userEmail: $("#userEmail"),
     logoutBtn: $("#logoutBtn"),
+    oauthBox: $("#oauthBox"),
+    settingsBtn: $("#settingsBtn"),
+    trashBar: $("#trashBar"),
+    emptyTrashBtn: $("#emptyTrashBtn"),
+    moreBtn: $("#moreBtn"),
+    moreMenu: $("#moreMenu"),
+    formatBar: $("#formatBar"),
+    imageInput: $("#imageInput"),
+    sharedView: $("#sharedView"),
+    sharedMeta: $("#sharedMeta"),
+    sharedTitle: $("#sharedTitle"),
+    sharedContent: $("#sharedContent"),
+    settingsDialog: $("#settingsDialog"),
+    setAvatar: $("#setAvatar"),
+    setEmail: $("#setEmail"),
+    setProvider: $("#setProvider"),
+    pwForm: $("#pwForm"),
+    newPassword: $("#newPassword"),
+    emailForm: $("#emailForm"),
+    newEmail: $("#newEmail"),
+    setExportBtn: $("#setExportBtn"),
+    setImportBtn: $("#setImportBtn"),
+    deleteAccountForm: $("#deleteAccountForm"),
+    deleteConfirm: $("#deleteConfirm"),
+    settingsMsg: $("#settingsMsg"),
+    setLogoutBtn: $("#setLogoutBtn"),
+    shareDialog: $("#shareDialog"),
+    shareDesc: $("#shareDesc"),
+    shareLinkBox: $("#shareLinkBox"),
+    shareLink: $("#shareLink"),
+    copyShareBtn: $("#copyShareBtn"),
+    shareToggleBtn: $("#shareToggleBtn"),
+    historyDialog: $("#historyDialog"),
+    historyList: $("#historyList"),
+    historyInfo: $("#historyInfo"),
+    restoreVersionBtn: $("#restoreVersionBtn"),
+    historyTitle: $("#historyTitle"),
+    historyContent: $("#historyContent"),
+    printArea: $("#printArea"),
   };
 
   // ---------- State ----------
   let notes = [];
   const prefs = Object.assign({ theme: null, sort: "updated" }, load(PREFS_KEY, {}));
-  const state = { view: "all", activeId: null, query: "", mode: "edit", user: null, session: null, authMode: "login", recovering: false };
-  const dirty = new Set();
+  const state = {
+    view: "all", activeId: null, query: "", mode: "edit",
+    user: null, session: null, authMode: "login", recovering: false,
+    features: { v2: false }, // v2 = migrasi 002 sudah dijalankan (gambar, berbagi, riwayat, dll.)
+    offline: !navigator.onLine,
+    oauthAvailable: false,
+  };
+  const dirty = new Set(); // catatan yang berubah dan belum terkirim
+  const inflight = new Set(); // sedang dikirim
+  const pendingDeletes = new Set(); // dihapus permanen, menunggu dikirim
   let saveTimer = null;
   let flushing = null;
+  let realtimeChannel = null;
+  let realtimeReady = false;
+  let refreshing = false;
+  let lastFetchAt = 0;
 
   function load(key, fallback) {
     try {
@@ -111,18 +162,25 @@
   // Kesalahan data (mis. melanggar batasan tabel) tidak akan berhasil walau diulang.
   const isPermanentError = (err) => /^(22|23|42)/.test(err.code || "");
 
-  const toRow = (n) => ({
-    user_id: state.user.id,
-    id: n.id,
-    title: String(n.title || "").slice(0, 140),
-    content: String(n.content || ""),
-    tags: (n.tags || []).slice(0, 20),
-    color: COLORS.includes(n.color) ? n.color : "",
-    pinned: !!n.pinned,
-    trashed: !!n.trashed,
-    created_at: Math.round(n.createdAt) || Date.now(),
-    updated_at: Math.round(n.updatedAt) || Date.now(),
-  });
+  const toRow = (n) => {
+    const row = {
+      user_id: state.user.id,
+      id: n.id,
+      title: String(n.title || "").slice(0, 140),
+      content: String(n.content || ""),
+      tags: (n.tags || []).slice(0, 20),
+      color: COLORS.includes(n.color) ? n.color : "",
+      pinned: !!n.pinned,
+      trashed: !!n.trashed,
+      created_at: Math.round(n.createdAt) || Date.now(),
+      updated_at: Math.round(n.updatedAt) || Date.now(),
+    };
+    if (state.features.v2) {
+      row.trashed_at = n.trashed ? Math.round(n.trashedAt || Date.now()) : null;
+      row.share_id = n.shareId || null;
+    }
+    return row;
+  };
 
   const fromRow = (r) => ({
     id: r.id,
@@ -134,7 +192,20 @@
     trashed: !!r.trashed,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
+    trashedAt: r.trashed_at == null ? null : Number(r.trashed_at),
+    shareId: r.share_id || null,
   });
+
+  const isNetworkError = (err) =>
+    !navigator.onLine || /failed to fetch|network|load failed|fetch failed/i.test((err && err.message) || "");
+
+  // Cek apakah migrasi 002 sudah dijalankan (kolom baru ada).
+  async function detectFeatures() {
+    const { error } = await sb.from("notes").select("share_id,trashed_at").limit(1);
+    if (!error) state.features.v2 = true;
+    else if (/^(42703|PGRST204)$/.test(error.code || "")) state.features.v2 = false;
+    // kesalahan lain (mis. offline): pakai nilai terakhir dari cache
+  }
 
   async function fetchNotes() {
     const PAGE = 1000; // batas baris per permintaan di Supabase
@@ -164,50 +235,211 @@
   }
 
   function setStatus(kind) {
-    const text = { saving: "Menyimpan…", saved: "Tersimpan", error: "Offline — mencoba lagi…" }[kind];
+    const text = {
+      saving: "Menyimpan…",
+      saved: "Tersimpan",
+      error: "Gagal menyimpan — mencoba lagi…",
+      offline: "Offline — tersimpan di perangkat",
+    }[kind];
     el.saveStatus.textContent = text;
     el.saveStatus.classList.toggle("saving", kind !== "saved");
+  }
+
+  // ---------- Cache lokal (mode offline) ----------
+  const cacheKeyFor = (user) => `catatan.cache.${user.id}`;
+  let cacheTimer = null;
+  function saveCache(immediate = false) {
+    if (!state.user) return;
+    const user = state.user;
+    clearTimeout(cacheTimer);
+    const write = () => {
+      if (state.user !== user) return;
+      try {
+        localStorage.setItem(
+          cacheKeyFor(user),
+          JSON.stringify({
+            notes,
+            dirty: [...dirty, ...inflight],
+            deletes: [...pendingDeletes],
+            features: state.features,
+            savedAt: Date.now(),
+          })
+        );
+      } catch {
+        /* penyimpanan penuh: abaikan, data tetap ada di server */
+      }
+    };
+    immediate ? write() : (cacheTimer = setTimeout(write, 400));
   }
 
   // Tandai catatan sebagai berubah; dikirim ke server secara berkelompok.
   function persist(note, immediate = false) {
     if (note) dirty.add(note.id);
-    setStatus("saving");
+    saveCache();
     clearTimeout(saveTimer);
+    if (state.offline && !navigator.onLine) {
+      setStatus("offline");
+      return;
+    }
+    setStatus("saving");
     saveTimer = setTimeout(flush, immediate ? 0 : 600);
   }
 
   function flush() {
     if (flushing) return flushing.then(flush);
-    if (!dirty.size) {
-      setStatus("saved");
+    if (!state.user) return Promise.resolve();
+    if (!dirty.size && !pendingDeletes.size) {
+      setStatus(state.offline ? "offline" : "saved");
       return Promise.resolve();
     }
     const ids = [...dirty].slice(0, 500);
-    ids.forEach((id) => dirty.delete(id));
+    ids.forEach((id) => {
+      dirty.delete(id);
+      inflight.add(id);
+    });
+    const dels = [...pendingDeletes];
     const batch = ids.map((id) => notes.find((n) => n.id === id)).filter(Boolean);
-    flushing = saveNotes(batch)
+    flushing = (async () => {
+      for (const id of dels) {
+        await removeAttachments(id).catch(() => {});
+        await deleteNote(id);
+        pendingDeletes.delete(id);
+      }
+      await saveNotes(batch);
+    })()
       .then(() => {
+        ids.forEach((id) => inflight.delete(id));
+        state.offline = false;
+        saveCache();
         setStatus(dirty.size ? "saving" : "saved");
         if (dirty.size) saveTimer = setTimeout(flush, 0);
       })
       .catch((err) => {
+        ids.forEach((id) => inflight.delete(id));
         if (!state.user) return;
         if (isPermanentError(err)) {
+          saveCache();
           setStatus("saved");
           toast("Gagal menyimpan: " + err.message);
           return;
         }
         ids.forEach((id) => dirty.add(id));
-        setStatus("error");
+        saveCache();
+        state.offline = isNetworkError(err);
+        setStatus(state.offline ? "offline" : "error");
         clearTimeout(saveTimer);
-        saveTimer = setTimeout(flush, 5000);
+        saveTimer = setTimeout(flush, state.offline ? 15000 : 5000);
       })
       .finally(() => {
         flushing = null;
       });
     return flushing;
   }
+
+  // Gabungkan data server dengan perubahan lokal yang belum terkirim.
+  function mergeServer(serverNotes) {
+    const pending = new Set([...dirty, ...inflight]);
+    const local = new Map(notes.map((n) => [n.id, n]));
+    const merged = [];
+    for (const s of serverNotes) {
+      if (pendingDeletes.has(s.id)) continue;
+      const l = local.get(s.id);
+      if (l && pending.has(s.id) && l.updatedAt >= s.updatedAt) merged.push(l);
+      else if (l) merged.push(Object.assign(l, s));
+      else merged.push(s);
+    }
+    const ids = new Set(merged.map((n) => n.id));
+    for (const l of notes) if (pending.has(l.id) && !ids.has(l.id)) merged.push(l);
+    notes = merged;
+    if (state.activeId && !notes.some((n) => n.id === state.activeId)) state.activeId = null;
+  }
+
+  async function refreshFromServer() {
+    if (!state.user || refreshing) return;
+    refreshing = true;
+    const user = state.user;
+    try {
+      const server = await fetchNotes();
+      if (state.user !== user) return;
+      lastFetchAt = Date.now();
+      mergeServer(server);
+      state.offline = false;
+      saveCache();
+      render();
+      if (dirty.size || pendingDeletes.size) persist(null, true);
+      else setStatus("saved");
+    } catch (err) {
+      if (isNetworkError(err)) {
+        state.offline = true;
+        setStatus("offline");
+      }
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  // ---------- Sinkron realtime ----------
+  const sameNote = (a, b) =>
+    a.title === b.title && a.content === b.content && a.color === b.color && a.pinned === b.pinned &&
+    a.trashed === b.trashed && (a.shareId || null) === (b.shareId || null) && a.tags.join("\u0000") === b.tags.join("\u0000");
+
+  let remoteRenderTimer = null;
+  function scheduleRemoteRender() {
+    clearTimeout(remoteRenderTimer);
+    remoteRenderTimer = setTimeout(() => {
+      if (!state.user) return;
+      if (state.activeId && !notes.some((n) => n.id === state.activeId)) state.activeId = null;
+      renderList();
+      renderEditor();
+      saveCache();
+    }, 120);
+  }
+
+  function onRemoteUpsert(payload) {
+    if (!state.user || !payload.new || !payload.new.id) return;
+    const r = fromRow(payload.new);
+    if (dirty.has(r.id) || inflight.has(r.id) || pendingDeletes.has(r.id)) return; // perubahan lokal lebih baru
+    const l = notes.find((n) => n.id === r.id);
+    if (l) {
+      if (r.updatedAt < l.updatedAt || (r.updatedAt === l.updatedAt && sameNote(l, r))) return;
+      Object.assign(l, r);
+    } else {
+      notes.push(r);
+    }
+    scheduleRemoteRender();
+  }
+
+  function onRemoteDelete(payload) {
+    const old = payload.old || {};
+    if (!state.user || !old.id || (old.user_id && old.user_id !== state.user.id)) return;
+    if (dirty.has(old.id) || inflight.has(old.id)) return;
+    const before = notes.length;
+    notes = notes.filter((n) => n.id !== old.id);
+    if (notes.length !== before) scheduleRemoteRender();
+  }
+
+  function subscribeRealtime() {
+    unsubscribeRealtime();
+    const id = state.user.id;
+    realtimeChannel = sb
+      .channel(`notes-${id}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notes", filter: `user_id=eq.${id}` }, onRemoteUpsert)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notes", filter: `user_id=eq.${id}` }, onRemoteUpsert)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "notes" }, onRemoteDelete)
+      .subscribe((status) => {
+        if (status !== "SUBSCRIBED") return;
+        // Tersambung ulang setelah terputus: ambil perubahan yang mungkin terlewat.
+        if (realtimeReady) refreshFromServer();
+        realtimeReady = true;
+      });
+  }
+
+  function unsubscribeRealtime() {
+    if (realtimeChannel && sb) sb.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+    realtimeReady = false;
+  }
+
   const savePrefs = () => localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
 
   function uid() {
@@ -220,20 +452,23 @@
       id: uid(),
       title: "Selamat datang di Catatan 👋",
       content: [
-        "Aplikasi catatan yang ringan dan cepat. Semua catatan **tersimpan otomatis** di browser kamu.",
+        "Aplikasi catatan yang ringan dan cepat. Semua catatan **tersimpan otomatis** di akunmu dan tersinkron ke semua perangkat — bahkan tetap bisa dipakai saat offline.",
         "",
         "## Yang bisa kamu lakukan",
         "- [x] Menulis catatan dengan *Markdown*",
         "- [ ] Menyematkan catatan penting",
         "- [ ] Memberi tag dan warna",
         "- [ ] Mencari catatan dengan cepat",
+        "- [ ] Menempel gambar langsung ke catatan",
+        "- [ ] Membagikan catatan lewat link (menu ⋯)",
         "",
         "## Pintasan keyboard",
         "- `N` — catatan baru",
         "- `⌘/Ctrl + K` — cari",
         "- `⌘/Ctrl + E` — ganti Tulis / Pratinjau",
+        "- `⌘/Ctrl + B` / `⌘/Ctrl + I` — tebal / miring",
         "",
-        "> Tip: buka **Pratinjau** dan klik kotak centang untuk menandai tugas selesai.",
+        "> Tip: buka **Pratinjau** dan klik kotak centang untuk menandai tugas selesai. Di HP, pasang aplikasi ini ke layar utama lewat menu browser → *Tambahkan ke Layar Utama*.",
       ].join("\n"),
       tags: ["mulai"],
       color: "#8b6cf0",
@@ -263,6 +498,7 @@
       .replace(/```[\s\S]*?```/g, " ")
       .replace(/^\s*[-*+]\s+\[[ xX]\]\s+/gm, "")
       .replace(/^\s*(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
+      .replace(/!\[([^\]]*)\]\([^)]+\)/g, "[gambar] ")
       .replace(/[*_~`]/g, "")
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
       .replace(/\s+/g, " ")
@@ -296,6 +532,11 @@
   function inline(s) {
     return s
       .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/!\[([^\]]*)\]\((attachment:[A-Za-z0-9/_.-]+|https:\/\/[^\s)]+)\)/g, (m, alt, src) =>
+        src.startsWith("attachment:")
+          ? `<img alt="${alt}" data-attachment="${src.slice(11)}" class="img-loading" loading="lazy">`
+          : `<img alt="${alt}" src="${src}" loading="lazy">`
+      )
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
       .replace(/~~([^~]+)~~/g, "<del>$1</del>")
@@ -413,13 +654,16 @@
   const PIN_SVG =
     '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>';
 
+  const SHARE_BADGE =
+    '<span class="share-badge" title="Dibagikan lewat link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>';
+
   function cardHtml(n, q) {
     const tags = n.tags.slice(0, 3).map((t) => `<span class="mini-tag">#${escapeHtml(t)}</span>`).join("");
     return `
       <button class="note-card${n.id === state.activeId ? " active" : ""}" data-id="${n.id}" style="--note-color:${n.color || "transparent"}">
         <h4>${n.pinned && !n.trashed ? PIN_SVG : ""}<span class="t">${n.title ? highlight(n.title, q) : '<span style="color:var(--faint)">Tanpa judul</span>'}</span></h4>
         <p>${snippet(n, q)}</p>
-        <div class="meta"><span>${relativeTime(n.updatedAt)}</span>${tags}</div>
+        <div class="meta"><span>${relativeTime(n.updatedAt)}</span>${n.shareId && !n.trashed ? SHARE_BADGE : ""}${tags}</div>
       </button>`;
   }
 
@@ -455,6 +699,13 @@
     document.querySelector('[data-count="all"]').textContent = live.length;
     document.querySelector('[data-count="pinned"]').textContent = live.filter((n) => n.pinned).length;
     document.querySelector('[data-count="trash"]').textContent = notes.length - live.length;
+
+    // bar sampah
+    const trashCount = notes.length - live.length;
+    el.trashBar.classList.toggle("hidden", state.view !== "trash" || !trashCount);
+    el.trashBar.querySelector("span").textContent = state.features.v2
+      ? "Catatan di sampah terhapus otomatis setelah 30 hari."
+      : `${trashCount} catatan di sampah.`;
 
     // nav state
     el.nav.forEach((b) => b.classList.toggle("active", b.dataset.view === state.view));
@@ -493,6 +744,10 @@
     el.deleteBtn.title = readOnly ? "Hapus permanen" : "Pindahkan ke sampah";
     el.pinBtn.classList.toggle("active", n.pinned);
     el.pinBtn.title = n.pinned ? "Lepas sematan" : "Sematkan";
+    el.formatBar.querySelector('[data-fmt="image"]').classList.toggle("hidden", !state.features.v2);
+    el.moreMenu.querySelector('[data-action="share"]').classList.toggle("hidden", !state.features.v2 || readOnly);
+    el.moreMenu.querySelector('[data-action="history"]').classList.toggle("hidden", !state.features.v2);
+    el.moreMenu.querySelector("hr").classList.toggle("hidden", !state.features.v2);
 
     renderChips(n);
     renderColors(n);
@@ -524,7 +779,11 @@
     el.modeSeg.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.mode === state.mode));
     el.contentInput.classList.toggle("hidden", preview);
     el.preview.classList.toggle("hidden", !preview);
-    if (preview && n) el.preview.innerHTML = renderMarkdown(n.content);
+    el.formatBar.classList.toggle("hidden", preview || !n || n.trashed);
+    if (preview && n) {
+      el.preview.innerHTML = renderMarkdown(n.content);
+      resolveImages(el.preview);
+    }
   }
 
   function updateFooter(n) {
@@ -566,32 +825,36 @@
     updateFooter(n);
   }
 
+  // Hapus permanen: dikirim lewat antrean, jadi tetap jalan walau sedang offline.
+  function permanentlyDelete(n) {
+    notes = notes.filter((x) => x.id !== n.id);
+    dirty.delete(n.id);
+    pendingDeletes.add(n.id);
+    if (state.activeId === n.id) state.activeId = null;
+    persist(null, true);
+  }
+
   function deleteActive() {
     const n = activeNote();
     if (!n) return;
     if (n.trashed) {
       if (!confirm("Hapus catatan ini secara permanen? Tindakan ini tidak bisa dibatalkan.")) return;
-      notes = notes.filter((x) => x.id !== n.id);
-      dirty.delete(n.id);
-      state.activeId = null;
+      permanentlyDelete(n);
       render();
-      deleteNote(n.id)
-        .then(() => toast("Catatan dihapus permanen"))
-        .catch((err) => {
-          if (!state.user) return;
-          notes.push(n);
-          render();
-          toast("Gagal menghapus: " + err.message);
-        });
+      toast("Catatan dihapus permanen");
       return;
     }
     n.trashed = true;
+    n.trashedAt = Date.now();
     n.pinned = false;
+    n.updatedAt = Date.now();
     state.activeId = null;
     persist(n, true);
     render();
     toast("Dipindahkan ke sampah", "Urungkan", () => {
       n.trashed = false;
+      n.trashedAt = null;
+      n.updatedAt = Date.now();
       state.activeId = n.id;
       persist(n, true);
       render();
@@ -602,10 +865,31 @@
     const n = activeNote();
     if (!n) return;
     n.trashed = false;
+    n.trashedAt = null;
+    n.updatedAt = Date.now();
     state.view = "all";
     persist(n, true);
     render();
     toast("Catatan dipulihkan");
+  }
+
+  function emptyTrash() {
+    const trashed = notes.filter((n) => n.trashed);
+    if (!trashed.length) return;
+    if (!confirm(`Hapus permanen ${trashed.length} catatan di sampah? Tindakan ini tidak bisa dibatalkan.`)) return;
+    trashed.forEach(permanentlyDelete);
+    render();
+    toast(`${trashed.length} catatan dihapus permanen`);
+  }
+
+  // Catatan yang sudah >30 hari di sampah dihapus otomatis.
+  function purgeOldTrash() {
+    if (!state.features.v2) return;
+    const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+    const old = notes.filter((n) => n.trashed && n.trashedAt && n.trashedAt < cutoff);
+    if (!old.length) return;
+    old.forEach(permanentlyDelete);
+    render();
   }
 
   function addTag(raw) {
@@ -637,6 +921,423 @@
   function applyTheme() {
     const theme = prefs.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     document.documentElement.dataset.theme = theme;
+  }
+
+  // ---------- Lampiran gambar ----------
+  const ATTACH_BUCKET = "attachments";
+  const IMG_TYPES = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+  const signedUrls = new Map(); // path -> { url, exp }
+
+  async function resolveImages(container) {
+    const imgs = [...container.querySelectorAll("img[data-attachment]")];
+    if (!imgs.length || !sb) return;
+    const now = Date.now();
+    const need = [...new Set(imgs.map((i) => i.dataset.attachment))].filter((p) => {
+      const c = signedUrls.get(p);
+      return !c || c.exp < now + 60_000;
+    });
+    if (need.length) {
+      try {
+        const { data } = await sb.storage.from(ATTACH_BUCKET).createSignedUrls(need, 3600);
+        (data || []).forEach((d) => d.signedUrl && signedUrls.set(d.path, { url: d.signedUrl, exp: now + 3600_000 }));
+      } catch {
+        /* offline */
+      }
+    }
+    imgs.forEach((img) => {
+      const c = signedUrls.get(img.dataset.attachment);
+      if (c) {
+        img.src = c.url;
+        img.classList.remove("img-loading");
+      } else {
+        markImageMissing(img);
+      }
+    });
+  }
+
+  function markImageMissing(img) {
+    const span = document.createElement("span");
+    span.className = "img-missing";
+    span.textContent = `🖼 ${img.alt || "gambar"} (tidak dapat dimuat)`;
+    img.replaceWith(span);
+  }
+  document.addEventListener(
+    "error",
+    (e) => {
+      if (e.target.tagName === "IMG" && e.target.closest(".preview, .print-area")) markImageMissing(e.target);
+    },
+    true
+  );
+
+  async function removeAttachments(noteId) {
+    if (!state.features.v2 || !state.user) return;
+    const prefix = `${state.user.id}/${noteId}`;
+    const { data, error } = await sb.storage.from(ATTACH_BUCKET).list(prefix, { limit: 1000 });
+    if (error || !data || !data.length) return;
+    await sb.storage.from(ATTACH_BUCKET).remove(data.map((f) => `${prefix}/${f.name}`));
+  }
+
+  // Perkecil foto besar sebelum diunggah (maks. 2000px) agar hemat kuota dan cepat dimuat.
+  async function prepareImage(file) {
+    if (file.type === "image/gif" || file.size < 1_500_000 || !window.createImageBitmap) return file;
+    try {
+      const bmp = await createImageBitmap(file);
+      const scale = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bmp.width * scale);
+      canvas.height = Math.round(bmp.height * scale);
+      canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+      const type = file.type === "image/png" ? "image/webp" : "image/jpeg";
+      const blob = await new Promise((r) => canvas.toBlob(r, type, 0.85));
+      return blob && blob.size < file.size ? new File([blob], file.name, { type: blob.type }) : file;
+    } catch {
+      return file;
+    }
+  }
+
+  function insertBlock(text) {
+    const ta = el.contentInput;
+    if (state.mode === "preview") {
+      state.mode = "edit";
+      renderMode();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }
+    const pos = ta.selectionEnd;
+    const before = pos > 0 && ta.value[pos - 1] !== "\n" ? "\n" : "";
+    ta.setRangeText(`${before}${text}\n`, ta.selectionStart, pos, "end");
+    ta.dispatchEvent(new Event("input"));
+  }
+
+  async function uploadImages(fileList) {
+    const n = activeNote();
+    const files = [...fileList].filter((f) => f.type.startsWith("image/"));
+    if (!n || n.trashed || !files.length) return;
+    if (!state.features.v2) return toast("Fitur gambar butuh migrasi database 002 (lihat README).");
+    if (state.offline || !navigator.onLine) return toast("Tidak bisa mengunggah gambar saat offline.");
+    for (const file of files) {
+      if (!IMG_TYPES[file.type]) {
+        toast("Format tidak didukung. Gunakan PNG, JPG, GIF, atau WebP.");
+        continue;
+      }
+      toast("Mengunggah gambar…");
+      const img = await prepareImage(file);
+      if (img.size > MAX_IMAGE_BYTES) {
+        toast("Gambar terlalu besar (maksimal 5 MB).");
+        continue;
+      }
+      const path = `${state.user.id}/${n.id}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.${IMG_TYPES[img.type]}`;
+      const { error } = await sb.storage.from(ATTACH_BUCKET).upload(path, img, { contentType: img.type, upsert: false });
+      if (error) {
+        toast("Gagal mengunggah: " + error.message);
+        continue;
+      }
+      const alt = (file.name || "gambar").replace(/\.[^.]+$/, "").replace(/[[\]()\n]/g, " ").trim().slice(0, 60) || "gambar";
+      if (state.activeId === n.id) insertBlock(`![${alt}](attachment:${path})`);
+      toast("Gambar ditambahkan");
+    }
+  }
+
+  // ---------- Toolbar format ----------
+  const LIST_PREFIX = /^(\s*)([-*+] \[[ xX]\] |[-*+] |\d+\. |> |#{1,6} )/;
+  function applyFormat(kind) {
+    const n = activeNote();
+    if (!n || n.trashed) return;
+    if (kind === "image") return el.imageInput.click();
+    const ta = el.contentInput;
+    if (state.mode === "preview") {
+      state.mode = "edit";
+      renderMode();
+    }
+    ta.focus();
+    const { selectionStart: s, selectionEnd: e, value: v } = ta;
+    const sel = v.slice(s, e);
+
+    const wrap = (before, after = before, placeholder = "teks") => {
+      if (sel && v.slice(s - before.length, s) === before && v.slice(e, e + after.length) === after) {
+        ta.setRangeText(sel, s - before.length, e + after.length, "select"); // sudah diformat → lepas
+        return;
+      }
+      const inner = sel || placeholder;
+      ta.setRangeText(before + inner + after, s, e, "end");
+      ta.setSelectionRange(s + before.length, s + before.length + inner.length);
+    };
+
+    const prefixLines = (makePrefix, pattern) => {
+      const ls = v.lastIndexOf("\n", s - 1) + 1;
+      const endPos = e > s && v[e - 1] === "\n" ? e - 1 : e;
+      let le = v.indexOf("\n", endPos);
+      if (le < 0) le = v.length;
+      const lines = v.slice(ls, le).split("\n");
+      const all = lines.every((l) => pattern.test(l));
+      const out = lines.map((l, i) => (all ? l.replace(pattern, "") : l.replace(LIST_PREFIX, "$1").replace(/^(\s*)/, `$1${makePrefix(i)}`)));
+      ta.setRangeText(out.join("\n"), ls, le, "end");
+    };
+
+    switch (kind) {
+      case "bold": wrap("**"); break;
+      case "italic": wrap("*"); break;
+      case "strike": wrap("~~"); break;
+      case "code": sel.includes("\n") ? wrap("```\n", "\n```", "kode") : wrap("`", "`", "kode"); break;
+      case "heading": prefixLines(() => "## ", /^\s*#{1,6} /); break;
+      case "ul": prefixLines(() => "- ", /^\s*[-*+] (?!\[[ xX]\] )/); break;
+      case "ol": prefixLines((i) => `${i + 1}. `, /^\s*\d+\. /); break;
+      case "task": prefixLines(() => "- [ ] ", /^\s*[-*+] \[[ xX]\] /); break;
+      case "quote": prefixLines(() => "> ", /^\s*> /); break;
+      case "link": {
+        const text = sel || "teks tautan";
+        const url = "https://";
+        ta.setRangeText(`[${text}](${url})`, s, e, "end");
+        const at = s + text.length + 3;
+        ta.setSelectionRange(at, at + url.length);
+        break;
+      }
+      default: return;
+    }
+    ta.dispatchEvent(new Event("input"));
+  }
+
+  // ---------- Menu ⋯, ekspor & cetak ----------
+  function toggleMenu(open) {
+    const show = open === undefined ? el.moreMenu.classList.contains("hidden") : open;
+    el.moreMenu.classList.toggle("hidden", !show);
+    el.moreBtn.setAttribute("aria-expanded", String(show));
+  }
+
+  const safeFileName = (t) => (t || "catatan").replace(/[\\/:*?"<>|#]+/g, "").replace(/\s+/g, " ").trim().slice(0, 80) || "catatan";
+
+  function downloadBlob(blob, name) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  function exportMarkdown() {
+    const n = activeNote();
+    if (!n) return;
+    const parts = [];
+    if (n.title) parts.push(`# ${n.title}`, "");
+    if (n.tags.length) parts.push(n.tags.map((t) => `#${t}`).join(" "), "");
+    parts.push(n.content);
+    downloadBlob(new Blob([parts.join("\n")], { type: "text/markdown;charset=utf-8" }), `${safeFileName(n.title)}.md`);
+    toast("Catatan diunduh sebagai Markdown");
+  }
+
+  async function printNote() {
+    const n = activeNote();
+    if (!n) return;
+    el.printArea.innerHTML = `<h1 class="print-title">${escapeHtml(n.title || "Tanpa judul")}</h1><div class="preview">${renderMarkdown(n.content)}</div>`;
+    await resolveImages(el.printArea);
+    await Promise.race([
+      Promise.all([...el.printArea.querySelectorAll("img")].map((i) => (i.complete ? null : new Promise((r) => (i.onload = i.onerror = r))))),
+      new Promise((r) => setTimeout(r, 4000)),
+    ]);
+    const oldTitle = document.title;
+    document.title = safeFileName(n.title); // dipakai sebagai nama file PDF
+    window.print();
+    document.title = oldTitle;
+  }
+
+  // ---------- Berbagi lewat link ----------
+  const shareUrl = (n) => `${location.origin}${location.pathname}?share=${n.shareId}`;
+
+  function renderShareDialog(n) {
+    const on = !!n.shareId;
+    el.shareDesc.textContent = on
+      ? "Siapa pun yang punya link ini bisa membaca catatan ini (termasuk gambarnya), tapi tidak bisa mengubahnya."
+      : "Buat link agar orang lain bisa membaca catatan ini tanpa login. Mereka tidak bisa mengubahnya.";
+    el.shareLinkBox.classList.toggle("hidden", !on);
+    if (on) el.shareLink.value = shareUrl(n);
+    el.shareToggleBtn.textContent = on ? "Hentikan berbagi" : "Buat link";
+    el.shareToggleBtn.className = on ? "btn-secondary" : "btn-primary";
+  }
+
+  function openShare() {
+    const n = activeNote();
+    if (!n) return;
+    if (!state.features.v2) return toast("Fitur berbagi butuh migrasi database 002 (lihat README).");
+    renderShareDialog(n);
+    el.shareDialog.showModal();
+  }
+
+  async function toggleShare() {
+    const n = activeNote();
+    if (!n) return;
+    if (state.offline || !navigator.onLine) return toast("Sambungkan ke internet untuk mengubah status berbagi.");
+    n.shareId = n.shareId ? null : crypto.randomUUID();
+    n.updatedAt = Date.now();
+    el.shareToggleBtn.disabled = true;
+    persist(n, true);
+    await flush();
+    el.shareToggleBtn.disabled = false;
+    if (dirty.has(n.id)) toast("Gagal menyimpan status berbagi. Coba lagi.");
+    renderShareDialog(n);
+    renderList();
+    if (n.shareId) el.shareLink.select();
+  }
+
+  // ---------- Riwayat versi ----------
+  let historyVersions = [];
+  let selectedVersion = null;
+
+  async function openHistory() {
+    const n = activeNote();
+    if (!n) return;
+    if (!state.features.v2) return toast("Riwayat versi butuh migrasi database 002 (lihat README).");
+    if (state.offline || !navigator.onLine) return toast("Riwayat versi tidak tersedia saat offline.");
+    el.historyList.innerHTML = '<div class="history-empty">Memuat…</div>';
+    el.historyTitle.textContent = "";
+    el.historyContent.innerHTML = "";
+    el.historyInfo.textContent = "";
+    el.restoreVersionBtn.classList.add("hidden");
+    el.historyDialog.showModal();
+    await flush();
+    const { data, error } = await sb
+      .from("note_versions")
+      .select("version_id,title,content,created_at")
+      .eq("user_id", state.user.id)
+      .eq("note_id", n.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) {
+      el.historyList.innerHTML = `<div class="history-empty">Gagal memuat riwayat: ${escapeHtml(error.message)}</div>`;
+      return;
+    }
+    historyVersions = [{ current: true, title: n.title, content: n.content, created_at: n.updatedAt }, ...(data || [])];
+    el.historyList.innerHTML =
+      historyVersions
+        .map(
+          (v, i) =>
+            `<button class="history-item" data-i="${i}"><b>${v.current ? "Versi sekarang" : escapeHtml(fullDate(Number(v.created_at)))}</b><span>${escapeHtml(v.title || "Tanpa judul")}</span></button>`
+        )
+        .join("") +
+      (historyVersions.length === 1
+        ? '<div class="history-empty">Belum ada versi lama. Versi disimpan otomatis saat catatan diubah (paling sering tiap 10 menit).</div>'
+        : "");
+    selectVersion(historyVersions.length > 1 ? 1 : 0);
+  }
+
+  function selectVersion(i) {
+    const n = activeNote();
+    selectedVersion = historyVersions[i];
+    if (!selectedVersion || !n) return;
+    el.historyList.querySelectorAll(".history-item").forEach((b) => b.classList.toggle("active", Number(b.dataset.i) === i));
+    el.historyTitle.textContent = selectedVersion.title || "Tanpa judul";
+    el.historyContent.innerHTML = renderMarkdown(selectedVersion.content);
+    resolveImages(el.historyContent);
+    el.historyInfo.textContent = selectedVersion.current ? "Versi yang sedang dipakai" : `Disimpan ${relativeTime(Number(selectedVersion.created_at))}`;
+    el.restoreVersionBtn.classList.toggle("hidden", !!selectedVersion.current || n.trashed);
+  }
+
+  async function restoreSelectedVersion() {
+    const n = activeNote();
+    const v = selectedVersion;
+    if (!n || !v || v.current) return;
+    // Simpan keadaan sekarang dulu, supaya pemulihan ini juga bisa dibatalkan lewat riwayat.
+    await sb.from("note_versions").insert({ user_id: state.user.id, note_id: n.id, title: n.title, content: n.content });
+    n.title = v.title;
+    n.content = v.content;
+    touch(n);
+    renderEditor();
+    el.historyDialog.close();
+    toast("Versi lama dipulihkan");
+  }
+
+  // ---------- Pengaturan akun ----------
+  function setSettingsMsg(text, kind = "") {
+    el.settingsMsg.textContent = text;
+    el.settingsMsg.className = `set-msg ${kind}`;
+  }
+
+  function openSettings() {
+    const u = state.user;
+    if (!u) return;
+    const providers = (u.app_metadata && u.app_metadata.providers) || ["email"];
+    const names = { email: "email & kata sandi", google: "Google", github: "GitHub" };
+    el.setAvatar.textContent = (u.email || "?").charAt(0);
+    el.setEmail.textContent = u.email;
+    el.setProvider.textContent =
+      `Masuk dengan ${providers.map((p) => names[p] || p).join(", ")}` +
+      (u.created_at ? ` · bergabung ${new Date(u.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}` : "");
+    el.deleteAccountForm.closest(".set-section").classList.toggle("hidden", !state.features.v2);
+    el.newPassword.value = el.newEmail.value = el.deleteConfirm.value = "";
+    setSettingsMsg(state.features.v2 ? "" : "Beberapa fitur (gambar, berbagi, riwayat versi, hapus akun) aktif setelah migrasi database 002 dijalankan — lihat README.");
+    el.settingsDialog.showModal();
+  }
+
+  async function deleteAccount() {
+    if (el.deleteConfirm.value.trim() !== "HAPUS") return setSettingsMsg('Ketik "HAPUS" (huruf besar) untuk mengonfirmasi.', "err");
+    if (state.offline || !navigator.onLine) return setSettingsMsg("Sambungkan ke internet untuk menghapus akun.", "err");
+    if (!confirm("Yakin? Akun dan SEMUA catatanmu akan dihapus permanen.")) return;
+    const user = state.user;
+    setSettingsMsg("Menghapus akun…");
+    try {
+      // Hapus semua file gambar milik pengguna dulu.
+      const storage = sb.storage.from(ATTACH_BUCKET);
+      const { data: folders } = await storage.list(user.id, { limit: 1000 });
+      for (const f of folders || []) {
+        const prefix = `${user.id}/${f.name}`;
+        const { data: files } = await storage.list(prefix, { limit: 1000 });
+        if (files && files.length) await storage.remove(files.map((x) => `${prefix}/${x.name}`));
+      }
+      const { error } = await sb.rpc("delete_my_account");
+      if (error) throw error;
+    } catch (err) {
+      return setSettingsMsg("Gagal menghapus akun: " + authErrorText(err), "err");
+    }
+    localStorage.removeItem(cacheKeyFor(user));
+    el.settingsDialog.close();
+    unsubscribeRealtime();
+    resetSession();
+    render();
+    await sb.auth.signOut({ scope: "local" }).catch(() => {});
+    showAuth("Akunmu dan semua catatannya sudah dihapus.", "info");
+  }
+
+  // ---------- Login Google / GitHub ----------
+  async function setupOAuthButtons() {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_KEY } });
+      const ext = ((await res.json()) || {}).external || {};
+      let any = false;
+      el.oauthBox.querySelectorAll("[data-provider]").forEach((b) => {
+        const on = !!ext[b.dataset.provider];
+        b.classList.toggle("hidden", !on);
+        any = any || on;
+      });
+      state.oauthAvailable = any;
+      setAuthMode(state.authMode);
+    } catch {
+      /* offline: tombol tetap tersembunyi */
+    }
+  }
+
+  // ---------- Halaman catatan yang dibagikan ----------
+  async function bootShared(shareId) {
+    document.body.classList.remove("booting");
+    document.body.classList.add("sharing");
+    el.sharedView.classList.remove("hidden");
+    const notFound = (msg) => {
+      el.sharedTitle.textContent = "Catatan tidak ditemukan";
+      el.sharedContent.innerHTML = `<p>${escapeHtml(msg)}</p>`;
+    };
+    const problem = configProblem();
+    if (problem) return notFound(problem);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(shareId))
+      return notFound("Link ini tidak valid.");
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: false } });
+    el.sharedTitle.textContent = "Memuat…";
+    const { data, error } = await sb.rpc("get_shared_note", { p_share_id: shareId });
+    const row = Array.isArray(data) ? data[0] : data;
+    if (error || !row) return notFound("Link ini mungkin salah, atau pemiliknya sudah berhenti membagikan catatan ini.");
+    document.title = `${row.title || "Tanpa judul"} · Catatan`;
+    el.sharedTitle.textContent = row.title || "Tanpa judul";
+    el.sharedMeta.textContent = `Diperbarui ${fullDate(Number(row.updated_at))}`;
+    el.sharedContent.innerHTML = renderMarkdown(row.content);
+    el.sharedContent.querySelectorAll('input[type="checkbox"]').forEach((c) => (c.disabled = true));
+    resolveImages(el.sharedContent);
   }
 
   // ---------- Events ----------
@@ -763,6 +1464,7 @@
     const n = activeNote();
     if (!n) return;
     n.pinned = !n.pinned;
+    n.updatedAt = Date.now();
     persist(n);
     render();
   });
@@ -834,10 +1536,151 @@
     }
   });
 
+  // Toolbar format & pintasan di editor
+  el.formatBar.addEventListener("mousedown", (e) => e.preventDefault()); // jangan hilangkan seleksi teks
+  el.formatBar.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-fmt]");
+    if (b) applyFormat(b.dataset.fmt);
+  });
+  el.contentInput.addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === "b" || k === "i") {
+      e.preventDefault();
+      applyFormat(k === "b" ? "bold" : "italic");
+    }
+  });
+
+  // Gambar: tombol, tempel, dan seret-lepas
+  el.imageInput.addEventListener("change", () => {
+    const files = el.imageInput.files;
+    if (files && files.length) uploadImages([...files]);
+    el.imageInput.value = "";
+  });
+  el.contentInput.addEventListener("paste", (e) => {
+    const files = [...(e.clipboardData ? e.clipboardData.files : [])].filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    e.preventDefault();
+    uploadImages(files);
+  });
+  el.contentInput.addEventListener("dragover", (e) => {
+    if (![...e.dataTransfer.types].includes("Files")) return;
+    e.preventDefault();
+    el.contentInput.classList.add("dragover");
+  });
+  el.contentInput.addEventListener("dragleave", () => el.contentInput.classList.remove("dragover"));
+  el.contentInput.addEventListener("drop", (e) => {
+    el.contentInput.classList.remove("dragover");
+    const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    e.preventDefault();
+    uploadImages(files);
+  });
+
+  // Menu ⋯
+  el.moreBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleMenu();
+  });
+  document.addEventListener("click", (e) => {
+    if (!el.moreMenu.classList.contains("hidden") && !e.target.closest(".menu-wrap")) toggleMenu(false);
+  });
+  el.moreMenu.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-action]");
+    if (!b) return;
+    toggleMenu(false);
+    ({ share: openShare, history: openHistory, "export-md": exportMarkdown, print: printNote })[b.dataset.action]();
+  });
+
+  // Berbagi
+  el.shareToggleBtn.addEventListener("click", toggleShare);
+  el.copyShareBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(el.shareLink.value);
+    } catch {
+      el.shareLink.select();
+      document.execCommand("copy");
+    }
+    el.copyShareBtn.textContent = "Tersalin ✓";
+    setTimeout(() => (el.copyShareBtn.textContent = "Salin"), 1500);
+  });
+
+  // Riwayat versi
+  el.historyList.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-i]");
+    if (b) selectVersion(Number(b.dataset.i));
+  });
+  el.restoreVersionBtn.addEventListener("click", restoreSelectedVersion);
+
+  // Sampah
+  el.emptyTrashBtn.addEventListener("click", emptyTrash);
+
+  // Pengaturan akun
+  el.settingsBtn.addEventListener("click", openSettings);
+  el.pwForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const password = el.newPassword.value;
+    if (password.length < 8) return setSettingsMsg("Kata sandi minimal 8 karakter.", "err");
+    setSettingsMsg("Menyimpan…");
+    const { error } = await sb.auth.updateUser({ password });
+    if (error) return setSettingsMsg(authErrorText(error), "err");
+    el.newPassword.value = "";
+    setSettingsMsg("Kata sandi berhasil diganti.", "ok");
+  });
+  el.emailForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = el.newEmail.value.trim();
+    if (!EMAIL_RE.test(email)) return setSettingsMsg("Alamat email tidak valid.", "err");
+    setSettingsMsg("Mengirim…");
+    const { error } = await sb.auth.updateUser({ email }, { emailRedirectTo: location.origin + location.pathname });
+    if (error) return setSettingsMsg(authErrorText(error), "err");
+    el.newEmail.value = "";
+    setSettingsMsg(`Tautan konfirmasi dikirim ke ${email} dan ke email lamamu. Email berganti setelah dikonfirmasi.`, "ok");
+  });
+  el.setExportBtn.addEventListener("click", () => el.exportBtn.click());
+  el.setImportBtn.addEventListener("click", () => el.importInput.click());
+  el.deleteAccountForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    deleteAccount();
+  });
+  el.setLogoutBtn.addEventListener("click", () => {
+    el.settingsDialog.close();
+    logout();
+  });
+
+  // Login Google / GitHub
+  el.oauthBox.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-provider]");
+    if (!b || !sb) return;
+    b.disabled = true;
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: b.dataset.provider,
+      options: { redirectTo: location.origin + location.pathname },
+    });
+    b.disabled = false;
+    if (error) setAuthMessage(authErrorText(error));
+  });
+
+  // Online / offline & kembali ke tab
+  window.addEventListener("online", () => {
+    if (!state.user) return;
+    state.offline = false;
+    toast("Kembali online — menyinkronkan…");
+    refreshFromServer();
+  });
+  window.addEventListener("offline", () => {
+    state.offline = true;
+    if (state.user) setStatus("offline");
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && state.user && Date.now() - lastFetchAt > 30_000) refreshFromServer();
+  });
+
   document.addEventListener("keydown", (e) => {
     const mod = e.metaKey || e.ctrlKey;
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
-    if (!state.user) return;
+    if (!state.user || document.querySelector("dialog[open]")) return;
+    if (e.key === "Escape" && !el.moreMenu.classList.contains("hidden")) return toggleMenu(false);
     if (mod && e.key.toLowerCase() === "k") {
       e.preventDefault();
       el.searchInput.focus();
@@ -914,6 +1757,7 @@
     el.authPassword.autocomplete = mode === "login" ? "current-password" : "new-password";
     el.forgotBtn.classList.toggle("hidden", mode !== "login");
     el.backToLoginBtn.classList.toggle("hidden", mode !== "reset");
+    el.oauthBox.classList.toggle("hidden", !state.oauthAvailable || mode === "reset" || mode === "newpass");
     setAuthMessage("");
   }
 
@@ -951,7 +1795,13 @@
 
   function resetSession() {
     clearTimeout(saveTimer);
+    clearTimeout(cacheTimer);
+    unsubscribeRealtime();
     dirty.clear();
+    inflight.clear();
+    pendingDeletes.clear();
+    signedUrls.clear();
+    document.querySelectorAll("dialog[open]").forEach((d) => d.close());
     notes = [];
     Object.assign(state, { view: "all", activeId: null, query: "", mode: "edit", user: null });
     el.searchInput.value = "";
@@ -966,35 +1816,73 @@
     return valid.length;
   }
 
+  function showApp() {
+    document.body.classList.remove("booting");
+    document.body.classList.add("authed");
+    if (!state.activeId) {
+      const first = visibleNotes()[0];
+      state.activeId = first && window.innerWidth > 760 ? first.id : null;
+    }
+    render();
+  }
+
   async function enterApp(user) {
     state.user = user;
     el.userEmail.textContent = user.email;
     el.userEmail.title = user.email;
     el.userAvatar.textContent = (user.email || "?").charAt(0);
 
+    // 1. Tampilkan dulu salinan lokal (cepat, dan tetap jalan saat offline).
+    const cache = load(cacheKeyFor(user), null);
+    if (cache && Array.isArray(cache.notes)) {
+      notes = cache.notes;
+      (cache.dirty || []).forEach((id) => dirty.add(id));
+      (cache.deletes || []).forEach((id) => pendingDeletes.add(id));
+      Object.assign(state.features, cache.features || {});
+      showApp();
+      setStatus(dirty.size || pendingDeletes.size ? "saving" : "saved");
+    }
+
+    // 2. Ambil versi terbaru dari server.
     let migrated = 0;
     try {
-      migrated = await migrateLocalNotes();
-    } catch {
-      /* biarkan catatan lokal tetap ada untuk dicoba lagi nanti */
+      try {
+        migrated = await migrateLocalNotes();
+      } catch {
+        /* biarkan catatan lokal tetap ada untuk dicoba lagi nanti */
+      }
+      await detectFeatures();
+      const server = await fetchNotes();
+      if (state.user !== user) return; // keluar saat sedang memuat
+      lastFetchAt = Date.now();
+      state.offline = false;
+      if (cache) mergeServer(server);
+      else notes = server;
+    } catch (err) {
+      if (state.user !== user) return;
+      if (cache && isNetworkError(err)) {
+        state.offline = true;
+        setStatus("offline");
+        toast("Offline — menampilkan catatan yang tersimpan di perangkat ini");
+        return;
+      }
+      throw err;
     }
-    notes = await fetchNotes();
-    if (state.user !== user) return; // keluar saat sedang memuat
 
     // Catatan sambutan sekali per akun (ditandai di metadata pengguna, berlaku lintas perangkat).
     if (!notes.length && !migrated && !(user.user_metadata && user.user_metadata.welcomed)) {
       const w = welcomeNote();
       notes.push(w);
-      persist(w, true);
+      dirty.add(w.id);
       sb.auth.updateUser({ data: { welcomed: true } }).catch(() => {});
     }
 
-    document.body.classList.remove("booting");
-    document.body.classList.add("authed");
-    const first = visibleNotes()[0];
-    state.activeId = first && window.innerWidth > 760 ? first.id : null;
-    render();
-    setStatus("saved");
+    showApp();
+    saveCache(true);
+    if (dirty.size || pendingDeletes.size) persist(null, true);
+    else setStatus("saved");
+    purgeOldTrash();
+    subscribeRealtime();
     if (migrated) toast(`${migrated} catatan lokal dipindahkan ke akunmu`);
   }
 
@@ -1092,9 +1980,12 @@
     }
   });
 
-  el.logoutBtn.addEventListener("click", async () => {
+  async function logout() {
     await flush().catch(() => {});
-    if (dirty.size && !confirm("Ada perubahan yang belum tersimpan ke server. Tetap keluar?")) return;
+    if ((dirty.size || pendingDeletes.size) && !confirm("Ada perubahan yang belum tersimpan ke server. Tetap keluar?")) return;
+    const user = state.user;
+    if (user) localStorage.removeItem(cacheKeyFor(user)); // jangan tinggalkan catatan di perangkat
+    unsubscribeRealtime();
     const { error } = await sb.auth.signOut({ scope: "local" }).catch((e) => ({ error: e }));
     if (error) console.warn("signOut:", error.message);
     if (state.user) {
@@ -1103,11 +1994,23 @@
       showAuth();
     }
     toast("Kamu sudah keluar");
-  });
+  }
+  el.logoutBtn.addEventListener("click", logout);
 
   // ---------- Init ----------
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    if (location.protocol !== "https:" && location.hostname !== "localhost") return;
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
+
   function boot() {
     applyTheme();
+    registerServiceWorker();
+
+    const shareId = new URLSearchParams(location.search).get("share");
+    if (shareId) return bootShared(shareId);
+
     setAuthMode("login");
 
     const problem = configProblem();
@@ -1138,6 +2041,7 @@
     });
     // Jangan memanggil Supabase langsung di dalam callback (bisa deadlock) — tunda ke tick berikutnya.
     sb.auth.onAuthStateChange((event, session) => setTimeout(() => handleAuthEvent(event, session), 0));
+    setupOAuthButtons();
   }
   boot();
 })();

@@ -4,6 +4,19 @@ Aplikasi catatan modern dengan login dan penyimpanan cloud memakai **Supabase**
 (Auth + Postgres dengan Row Level Security). Frontend-nya situs statis biasa (HTML, CSS, JS),
 tanpa build step dan tanpa server sendiri.
 
+## Fitur
+
+- Markdown dengan toolbar format (tebal, miring, judul, daftar, checklist, kutipan, kode, tautan)
+- Tag, warna, sematkan, pencarian, urutkan, mode gelap
+- **Gambar**: tempel, seret, atau pilih file; foto besar otomatis diperkecil (Supabase Storage, privat)
+- **Sinkron realtime** antar perangkat dan antar tab
+- **Offline & bisa dipasang** (PWA): catatan tetap bisa dibuka dan diedit tanpa internet, lalu tersinkron saat online
+- **Bagikan lewat link** (hanya baca, tanpa login) dan hentikan kapan saja
+- **Riwayat versi**: versi lama tersimpan otomatis, bisa dipulihkan
+- Sampah dengan hapus otomatis setelah 30 hari + tombol kosongkan sampah
+- Unduh catatan sebagai Markdown atau cetak/simpan PDF; ekspor/impor semua catatan (JSON)
+- Akun: daftar/masuk email, **login Google/GitHub**, lupa sandi, ganti sandi/email, hapus akun
+
 ## Struktur
 
 ```
@@ -13,8 +26,12 @@ catatan/
 │   ├── styles.css
 │   ├── app.js
 │   └── config.js        # URL + kunci anon Supabase (isi sendiri)
+│   ├── sw.js            # service worker (offline / PWA)
+│   ├── manifest.webmanifest
+│   └── icons/
 ├── supabase/
-│   └── schema.sql       # tabel notes + kebijakan RLS
+│   ├── schema.sql                     # tabel notes + kebijakan RLS
+│   └── migrations/002_fitur_baru.sql  # gambar, berbagi, riwayat, realtime, hapus akun
 └── vercel.json          # konfigurasi hosting Vercel
 ```
 
@@ -22,6 +39,8 @@ catatan/
 
 1. **Buat project** di https://supabase.com/dashboard (paket gratis cukup).
 2. **Buat tabel:** buka **SQL Editor → New query**, tempel isi [`supabase/schema.sql`](supabase/schema.sql), klik **Run**.
+   Lalu ulangi dengan [`supabase/migrations/002_fitur_baru.sql`](supabase/migrations/002_fitur_baru.sql).
+   Tanpa migrasi 002 aplikasi tetap jalan, tapi fitur gambar, berbagi, riwayat versi, dan hapus akun disembunyikan.
 3. **Isi konfigurasi:** buka **Project Settings → API Keys**, salin *Project URL* dan kunci
    **anon / publishable** ke `public/config.js`:
    ```js
@@ -56,6 +75,23 @@ tanpa build step, folder `public/` yang disajikan, plus header keamanan (CSP, no
 Agar login dan tautan email berfungsi, di Supabase **Authentication → URL Configuration**:
 - *Site URL*: `https://catatan-wt5e.vercel.app/`
 - *Redirect URLs*: `https://catatan-wt5e.vercel.app/**` (dan `http://localhost:8080/**` untuk pengembangan)
+
+## Login Google / GitHub (opsional)
+
+Tombolnya muncul otomatis di halaman masuk begitu provider-nya diaktifkan di Supabase.
+
+**Google**
+1. Buka https://console.cloud.google.com → buat project → **APIs & Services → OAuth consent screen**
+   (pilih *External*, isi nama aplikasi & email).
+2. **Credentials → Create credentials → OAuth client ID** → tipe *Web application*.
+   Di *Authorized redirect URIs* isi: `https://tgztswbgnhevyxaxbawz.supabase.co/auth/v1/callback`
+3. Salin *Client ID* dan *Client secret* ke Supabase **Authentication → Sign In / Providers → Google**, aktifkan, simpan.
+
+**GitHub**
+1. Buka https://github.com/settings/developers → **New OAuth App**.
+   *Homepage URL*: `https://catatan-wt5e.vercel.app/` ·
+   *Authorization callback URL*: `https://tgztswbgnhevyxaxbawz.supabase.co/auth/v1/callback`
+2. Buat *client secret*, lalu salin *Client ID* + *secret* ke Supabase **Authentication → Sign In / Providers → GitHub**.
 
 ## Fitur akun
 

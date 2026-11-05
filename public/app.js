@@ -1311,7 +1311,7 @@
         any = any || on;
       });
       state.oauthAvailable = any;
-      setAuthMode(state.authMode);
+      setAuthMode(state.authMode, true); // jangan hapus pesan galat yang sedang tampil
     } catch {
       /* offline: tombol tetap tersembunyi */
     }
@@ -1761,7 +1761,7 @@
     el.authInfo.textContent = kind === "info" ? text : "";
   }
 
-  function setAuthMode(mode) {
+  function setAuthMode(mode, keepMessage = false) {
     state.authMode = mode;
     const t = AUTH_TEXT[mode];
     el.authSeg.classList.toggle("hidden", mode === "reset" || mode === "newpass");
@@ -1776,7 +1776,7 @@
     el.forgotBtn.classList.toggle("hidden", mode !== "login");
     el.backToLoginBtn.classList.toggle("hidden", mode !== "reset");
     el.oauthBox.classList.toggle("hidden", !state.oauthAvailable || mode === "reset" || mode === "newpass");
-    setAuthMessage("");
+    if (!keepMessage) setAuthMessage("");
   }
 
   function authErrorText(error) {
@@ -1798,6 +1798,19 @@
     if (/email not confirmed/i.test(msg)) return messages.email_not_confirmed;
     if (/failed to fetch|network|load failed/i.test(msg)) return "Tidak dapat terhubung ke Supabase. Periksa koneksi internet.";
     return msg || "Terjadi kesalahan. Coba lagi.";
+  }
+
+  // Galat yang dibawa Supabase di URL setelah login/tautan email (mis. Google menolak kredensial).
+  function describeRedirectError(code, desc) {
+    const d = desc || "";
+    if (code === "otp_expired" || /(link|otp|token).*(expired|invalid)|(expired|invalid).*(link|otp|token)/i.test(d))
+      return "Tautan dari email sudah kedaluwarsa atau tidak valid. Silakan minta tautan baru.";
+    if (/access_denied/i.test(code) || /access.denied/i.test(d)) return "Login dibatalkan atau ditolak oleh penyedia (Google/GitHub).";
+    if (/exchange external code|invalid_client|unauthorized_client/i.test(d))
+      return `Login gagal: Google menolak kredensial yang tersimpan di Supabase (Client Secret kemungkinan salah atau sudah dinonaktifkan). Rincian: ${d}`;
+    if (/user email from external provider|email.*external provider/i.test(d))
+      return `Login gagal: penyedia tidak memberikan alamat email akun. Rincian: ${d}`;
+    return `Login gagal: ${d || code}${d && code ? ` (${code})` : ""}`;
   }
 
   function showAuth(message = "", kind = "error") {
@@ -2046,11 +2059,11 @@
     // Tautan dari email (konfirmasi / reset sandi) membawa info di URL.
     const params = new URLSearchParams(location.hash.slice(1) + "&" + location.search.slice(1));
     state.recovering = params.get("type") === "recovery";
-    const urlError = params.get("error_description");
+    const urlError = params.get("error_description") || params.get("error");
     if (urlError) {
-      state.urlError = /expired|invalid/i.test(urlError)
-        ? "Tautan dari email sudah kedaluwarsa atau tidak valid. Silakan minta tautan baru."
-        : urlError;
+      const code = params.get("error_code") || params.get("error") || "";
+      console.warn("Galat dari redirect login:", code, urlError);
+      state.urlError = describeRedirectError(code, urlError);
       history.replaceState(null, "", location.pathname);
     }
 

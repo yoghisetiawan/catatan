@@ -13,8 +13,9 @@ catatan/
 │   ├── styles.css
 │   ├── app.js
 │   └── config.js        # URL + kunci anon Supabase (isi sendiri)
-└── supabase/
-    └── schema.sql       # tabel notes + kebijakan RLS
+├── supabase/
+│   └── schema.sql       # tabel notes + kebijakan RLS
+└── vercel.json          # konfigurasi hosting Vercel
 ```
 
 ## Setup (sekali saja)
@@ -32,8 +33,8 @@ catatan/
    Kunci anon memang aman berada di browser karena data dilindungi RLS.
    **Jangan pernah** menaruh kunci `service_role` / `secret` di sini (aplikasi akan menolaknya).
 4. **Atur URL redirect:** buka **Authentication → URL Configuration**:
-   - *Site URL*: alamat aplikasimu, mis. `http://localhost:8080` saat pengembangan.
-   - *Redirect URLs*: tambahkan alamat yang sama (dipakai tautan konfirmasi email dan reset sandi).
+   - *Site URL*: alamat aplikasimu, mis. `https://catatan-wt5e.vercel.app/`.
+   - *Redirect URLs*: tambahkan alamat yang sama, plus `http://localhost:8080/**` untuk pengembangan.
 
 ## Menjalankan secara lokal
 
@@ -46,16 +47,15 @@ karena login Supabase butuh alamat `http://`.)
 
 ## Deploy
 
-Repo ini otomatis ter-deploy ke **GitHub Pages** setiap ada push ke `main`
-(lihat `.github/workflows/pages.yml`): https://yoghisetiawan.github.io/catatan/
+Aplikasi di-hosting di **Vercel**: https://catatan-wt5e.vercel.app/
 
-Agar login dan tautan email berfungsi di sana, tambahkan `https://yoghisetiawan.github.io/catatan/`
-ke **Authentication → URL Configuration → Redirect URLs** di Supabase (dan jadikan Site URL bila
-itu alamat utama aplikasi).
+Repo GitHub ini terhubung ke Vercel, jadi setiap push ke `main` otomatis ter-deploy
+(dan setiap branch/PR mendapat preview URL sendiri). Pengaturannya ada di [`vercel.json`](vercel.json):
+tanpa build step, folder `public/` yang disajikan, plus header keamanan (CSP, nosniff, dll.).
 
-Alternatif lain: Unggah isi folder `public/` ke hosting statis mana saja: Vercel, Netlify, Cloudflare Pages,
-GitHub Pages, atau Supabase Storage. Jangan lupa menambahkan domain produksi ke *Redirect URLs*
-di Supabase.
+Agar login dan tautan email berfungsi, di Supabase **Authentication → URL Configuration**:
+- *Site URL*: `https://catatan-wt5e.vercel.app/`
+- *Redirect URLs*: `https://catatan-wt5e.vercel.app/**` (dan `http://localhost:8080/**` untuk pengembangan)
 
 ## Fitur akun
 

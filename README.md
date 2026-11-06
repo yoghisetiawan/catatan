@@ -171,3 +171,8 @@ Tombolnya muncul otomatis di halaman masuk begitu provider-nya diaktifkan di Sup
   dan mencegah pemilik catatan diganti.
 - Content-Security-Policy membatasi skrip hanya dari situs sendiri dan jsDelivr; pustaka
   supabase-js dikunci di versi 2.119.0 dengan hash Subresource Integrity.
+
+## Lisensi
+
+[MIT](LICENSE) © 2026 yoghi. Kode aplikasi ini bebas dipakai, diubah, dan disebarkan dengan tetap menyertakan pemberitahuan hak cipta.
+Pustaka pihak ketiga (supabase-js, docx, pdfmake, ExcelJS, PptxGenJS) tidak disertakan di repo; semuanya dimuat dari CDN dan tunduk pada lisensinya masing-masing.

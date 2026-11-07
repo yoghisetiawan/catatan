@@ -38,6 +38,7 @@
           <li><b>Jika kamu masuk dengan Google:</b> Google memberi kami alamat email dan profil dasar (nama dan foto profil). Aplikasi hanya menampilkan emailmu. Kami tidak meminta akses ke Gmail, Drive, kontak, atau data Google lainnya.</li>
           <li><b>Isi catatan:</b> judul, isi, tag, warna, status sematan dan sampah, serta tanggal dibuat dan diubah.</li>
           <li><b>Gambar</b> yang kamu tempel ke catatan.</li>
+          <li><b>Folder</b> (nama dan susunannya) serta <b>waktu pengingat</b> yang kamu atur pada catatan.</li>
           <li><b>Riwayat versi:</b> salinan lama sebuah catatan (maksimal 50 versi per catatan), dipakai agar kamu bisa memulihkan isi yang tertimpa.</li>
           <li><b>Pengaturan:</b> tema terang/gelap dan urutan daftar, disimpan di perangkatmu.</li>
         </ul>
@@ -51,6 +52,7 @@
           <li><b>Supabase</b>: database, autentikasi, penyimpanan gambar, dan pengiriman email akun. Basis data kami berada di wilayah Singapura (AWS ap-southeast-1).</li>
           <li><b>Vercel</b>: menyajikan situs ini. Seperti server web pada umumnya, Vercel dapat mencatat alamat IP dan data teknis permintaan.</li>
           <li><b>Google</b>: bila kamu memilih masuk dengan Google, dan juga untuk memuat font (Google Fonts).</li>
+          <li><b>Penyedia pengenalan suara browser</b> (hanya bila kamu memakai tombol Rekam atau dikte): lihat bagian 5.</li>
           <li><b>jsDelivr</b>: jaringan pengantar (CDN) untuk pustaka kode, termasuk pustaka ekspor Word, PDF, Excel, dan PowerPoint yang dimuat saat dipakai.</li>
         </ul>
         <p>Pihak-pihak tersebut menerima data teknis dasar (misalnya alamat IP dan jenis browser) saat browsermu mengakses layanan mereka. Mereka memiliki kebijakan privasi masing-masing. Ekspor ke Word, PDF, Excel, dan PowerPoint dibuat di dalam browsermu, bukan di server kami.</p>
@@ -58,17 +60,21 @@
         <h2>4. Penyimpanan di perangkatmu</h2>
         <p>Aplikasi menyimpan di browser: token sesi login, salinan catatanmu agar bisa dibuka dan diedit saat offline, pengaturan tampilan, dan cache file aplikasi (service worker). Salinan catatan dan sesi dihapus saat kamu keluar dari akun. Kami tidak memakai cookie iklan.</p>
 
-        <h2>5. Berbagi lewat link</h2>
+        <h2>5. Rekam suara dan pengingat</h2>
+        <p><b>Rekam suara</b> memakai fitur pengenalan suara bawaan browsermu dan baru aktif setelah kamu mengizinkan mikrofon serta menekan tombol Rekam atau mikrofon. Di Chrome dan Edge, suara yang kamu ucapkan dikirim ke layanan pengenalan suara milik penyedia browser untuk diubah menjadi teks. Catatan sendiri <b>tidak merekam atau menyimpan audio</b>; yang disimpan hanya teks hasilnya di catatanmu. Kamu bisa mencabut izin mikrofon kapan saja di pengaturan situs browsermu.</p>
+        <p><b>Pengingat</b> memakai jam di perangkatmu. Notifikasi dibuat oleh browsermu dan hanya muncul setelah kamu mengizinkannya; kami tidak mengirim notifikasi dari server.</p>
+
+        <h2>6. Berbagi lewat link</h2>
         <p>Catatan hanya terlihat olehmu, <b>kecuali</b> kamu membuat link berbagi. Siapa pun yang memiliki link itu bisa membaca catatan tersebut (termasuk gambarnya) tanpa login, sampai kamu menghentikan berbagi atau menghapus catatannya. Link berisi kode acak yang sulit ditebak, dan halaman berbagi tidak diindeks mesin pencari. Bagikan link hanya kepada orang yang kamu percaya.</p>
 
-        <h2>6. Berapa lama data disimpan</h2>
+        <h2>7. Berapa lama data disimpan</h2>
         <ul>
           <li>Selama akunmu ada.</li>
           <li>Catatan di <b>Sampah</b> dihapus otomatis setelah 30 hari (proses berjalan saat aplikasi dibuka), atau lebih cepat bila kamu menghapusnya sendiri.</li>
           <li>Setelah kamu menghapus akun, catatan, riwayat versi, dan gambarmu dihapus permanen. Salinan cadangan sistem milik penyedia infrastruktur dapat bertahan untuk waktu terbatas sebelum benar-benar hilang.</li>
         </ul>
 
-        <h2>7. Kendali dan hak kamu</h2>
+        <h2>8. Kendali dan hak kamu</h2>
         <ul>
           <li><b>Melihat dan mengunduh datamu:</b> Pengaturan akun → <i>Ekspor semua catatan (JSON)</i> atau <i>Ekspor semua ke Excel</i>. Setiap catatan juga bisa diekspor ke Word, PDF, PowerPoint, atau Markdown.</li>
           <li><b>Mengubah data akun:</b> ganti email dan kata sandi di Pengaturan akun.</li>
@@ -77,16 +83,16 @@
         </ul>
         <p>Kami berusaha memenuhi hak-hakmu sesuai peraturan perlindungan data pribadi yang berlaku di Indonesia. Bila kamu butuh bantuan, hubungi kami lewat kontak di bawah.</p>
 
-        <h2>8. Keamanan</h2>
+        <h2>9. Keamanan</h2>
         <p>Semua koneksi memakai HTTPS. Akses ke data dibatasi di tingkat database sehingga setiap akun hanya dapat membaca dan mengubah catatannya sendiri, dan gambar disimpan di penyimpanan privat. Tidak ada sistem yang sepenuhnya aman, jadi gunakan kata sandi yang kuat dan unik, dan ekspor catatan penting secara berkala sebagai cadangan.</p>
 
-        <h2>9. Anak-anak</h2>
+        <h2>10. Anak-anak</h2>
         <p>Catatan tidak ditujukan bagi anak di bawah 13 tahun. Bila kamu mengetahui ada anak di bawah usia itu yang memiliki akun, beri tahu kami agar akunnya dihapus.</p>
 
-        <h2>10. Perubahan kebijakan</h2>
+        <h2>11. Perubahan kebijakan</h2>
         <p>Kebijakan ini dapat diperbarui. Tanggal pembaruan terakhir tertera di bagian atas halaman. Perubahan penting akan kami sampaikan di dalam aplikasi atau lewat email.</p>
 
-        <h2>11. Kontak</h2>
+        <h2>12. Kontak</h2>
         <p>Pertanyaan atau permintaan terkait data pribadi: buka laporan di <a href="https://github.com/yoghisetiawan/catatan/issues" target="_blank" rel="noopener noreferrer">github.com/yoghisetiawan/catatan/issues</a>. Jangan menuliskan kata sandi atau isi catatan di laporan publik itu.</p>
       </div>
       <p class="legal-foot">Lihat juga <a href="ketentuan.html">Ketentuan Layanan</a>.</p>

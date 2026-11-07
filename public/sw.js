@@ -1,6 +1,6 @@
 // Service worker Catatan: membuat aplikasi bisa dibuka saat offline dan dipasang di HP.
 // Naikkan VERSION setiap kali daftar SHELL berubah.
-const VERSION = "catatan-v4";
+const VERSION = "catatan-v5";
 const SUPABASE_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.min.js";
 const SHELL = [
   "./",
@@ -86,3 +86,14 @@ async function networkFirst(req) {
     throw err;
   }
 }
+
+// Klik notifikasi pengingat: fokuskan jendela Catatan yang sudah terbuka, atau buka yang baru.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) if ("focus" in c) return c.focus();
+      return self.clients.openWindow("./");
+    })
+  );
+});

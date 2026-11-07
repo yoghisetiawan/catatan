@@ -84,10 +84,16 @@
         <span>Catatan</span>
       </div>
 
-      <button class="btn-primary" id="newNoteBtn" title="Catatan baru (N)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        Catatan baru
-      </button>
+      <div class="new-row">
+        <button class="btn-primary" id="newNoteBtn" title="Catatan baru (N)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Catatan baru
+        </button>
+        <button class="btn-rec hidden" id="recNoteBtn" title="Rekam suara jadi catatan">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>
+          <span>Rekam</span>
+        </button>
+      </div>
 
       <nav class="nav">
         <button class="nav-item active" data-view="all">
@@ -98,11 +104,27 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
           <span>Disematkan</span><em class="count" data-count="pinned">0</em>
         </button>
+        <button class="nav-item" data-view="calendar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <span>Kalender harian</span>
+        </button>
+        <button class="nav-item" data-view="reminders">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          <span>Pengingat &amp; alarm</span><em class="count" data-count="reminders">0</em>
+        </button>
         <button class="nav-item" data-view="trash">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
           <span>Sampah</span><em class="count" data-count="trash">0</em>
         </button>
       </nav>
+
+      <div class="section-title folder-title">
+        <span>Folder</span>
+        <button class="icon-btn mini" id="addFolderBtn" title="Folder baru">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div class="folder-tree" id="folderTree"></div>
 
       <div class="section-title">Tag</div>
       <div class="tag-list" id="tagList"></div>
@@ -142,6 +164,7 @@
         </div>
         <div class="list-meta">
           <h2 id="listTitle">Semua catatan</h2>
+          <select id="folderFilter" class="folder-filter" title="Folder"></select>
           <select id="sortSelect" title="Urutkan">
             <option value="updated">Terakhir diubah</option>
             <option value="created">Tanggal dibuat</option>
@@ -149,6 +172,11 @@
           </select>
         </div>
       </header>
+      <div class="calendar hidden" id="calendar" aria-label="Kalender harian"></div>
+      <div class="remind-bar hidden" id="remindBar">
+        <span id="remindBarText"></span>
+        <button class="link-btn" id="notifyBtn">Aktifkan notifikasi</button>
+      </div>
       <div class="trash-bar hidden" id="trashBar">
         <span>Catatan di sampah terhapus otomatis setelah 30 hari.</span>
         <button class="link-btn danger-link" id="emptyTrashBtn">Kosongkan sampah</button>
@@ -182,6 +210,9 @@
 
           <div class="color-picker" id="colorPicker" title="Warna catatan"></div>
 
+          <button class="icon-btn hidden" id="remindBtn" title="Atur pengingat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          </button>
           <button class="icon-btn" id="pinBtn" title="Sematkan">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
           </button>
@@ -220,6 +251,10 @@
         <div class="editor-body">
           <input class="title-input" id="titleInput" placeholder="Judul" maxlength="140" />
           <div class="tags-row" id="tagsRow">
+            <label class="folder-pick hidden" id="folderPick" title="Pindahkan ke folder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              <select id="folderSelect" aria-label="Folder catatan"></select>
+            </label>
             <div class="tag-chips" id="tagChips"></div>
             <input class="tag-input" id="tagInput" placeholder="+ tambah tag" maxlength="24" />
           </div>
@@ -250,11 +285,19 @@
             <button data-fmt="link" title="Tautan">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
             </button>
+            <button data-fmt="mic" class="hidden" title="Dikte: bicara jadi teks">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>
+            </button>
             <button data-fmt="image" title="Sisipkan gambar (atau tempel / seret gambar)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
             </button>
           </div>
           <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+          <div class="rec-bar hidden" id="recBar" role="status">
+            <span class="rec-dot"></span>
+            <span id="recText">Mendengarkan… bicaralah</span>
+            <button class="btn-rec-stop" id="recStopBtn" type="button">Berhenti</button>
+          </div>
           <textarea class="content-input" id="contentInput" placeholder="Mulai menulis… (mendukung Markdown: # judul, **tebal**, - [ ] tugas)"></textarea>
           <article class="preview hidden" id="preview"></article>
         </div>
@@ -328,6 +371,13 @@
         </div>
       </section>
 
+      <section class="set-section hidden" id="installSection">
+        <h3>Aplikasi</h3>
+        <div class="set-row">
+          <button class="btn-secondary" id="setInstallBtn" type="button">Pasang Catatan di perangkat ini</button>
+        </div>
+      </section>
+
       <section class="set-section danger-zone">
         <h3>Hapus akun</h3>
         <p class="set-sub">Semua catatan, riwayat, dan gambar akan dihapus permanen. Ketik <b>HAPUS</b> untuk mengonfirmasi.</p>
@@ -343,6 +393,54 @@
       <p class="set-sub legal-links"><a href="privasi.html" target="_blank" rel="noopener">Kebijakan Privasi</a> · <a href="ketentuan.html" target="_blank" rel="noopener">Ketentuan Layanan</a></p>
     </div>
   </dialog>
+
+  <!-- Pengingat -->
+  <dialog class="dialog dialog-sm" id="remindDialog">
+    <form method="dialog" class="dialog-head">
+      <h2>Pengingat &amp; alarm</h2>
+      <button class="icon-btn" value="close" title="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </form>
+    <div class="dialog-body">
+      <p class="set-sub" id="remindNoteTitle"></p>
+      <label class="field">
+        <span>Ingatkan saya pada</span>
+        <input type="datetime-local" id="remindInput" />
+      </label>
+      <div class="quick-row" id="remindQuick">
+        <button type="button" class="btn-secondary" data-add="15">+15 menit</button>
+        <button type="button" class="btn-secondary" data-add="60">+1 jam</button>
+        <button type="button" class="btn-secondary" data-add="tomorrow">Besok 08.00</button>
+      </div>
+      <p class="set-sub">Alarm berbunyi dan notifikasi muncul selama Catatan terbuka di browser (tab boleh di latar belakang). Jika aplikasi tertutup, pengingat baru berbunyi saat dibuka lagi.</p>
+      <div class="set-msg" id="remindMsg" role="status"></div>
+      <div class="set-row">
+        <button class="btn-primary" id="remindSaveBtn" type="button">Simpan pengingat</button>
+        <button class="btn-secondary" id="remindClearBtn" type="button">Hapus pengingat</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Alarm yang sedang berbunyi -->
+  <dialog class="dialog dialog-sm alarm-dialog" id="alarmDialog">
+    <div class="dialog-head">
+      <h2>⏰ Pengingat</h2>
+    </div>
+    <div class="dialog-body">
+      <div class="alarm-list" id="alarmList"></div>
+      <div class="set-row">
+        <button class="btn-secondary" id="alarmMuteBtn" type="button">Matikan suara</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Ajakan memasang aplikasi -->
+  <div class="install-bar hidden" id="installBar" role="region" aria-label="Pasang aplikasi">
+    <p id="installText">💡 Pasang <b>Catatan</b> di perangkatmu agar lebih cepat dibuka dan bisa dipakai offline.</p>
+    <div class="install-actions">
+      <button class="btn-primary" id="installBtn" type="button">Instal sekarang</button>
+      <button class="link-btn" id="installLater" type="button">Nanti</button>
+    </div>
+  </div>
 
   <!-- Ekspor -->
   <dialog class="dialog dialog-sm" id="exportDialog">

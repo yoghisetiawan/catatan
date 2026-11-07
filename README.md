@@ -16,6 +16,11 @@ tanpa build step dan tanpa server sendiri.
 - Sampah dengan hapus otomatis setelah 30 hari + tombol kosongkan sampah
 - **Ekspor ke Word (.docx), PDF, Excel (.xlsx), PowerPoint (.pptx)** dan Markdown; atau cetak. Ekspor semua catatan ke Excel/JSON dari Pengaturan
 - **Tabel Markdown** (tombol tabel di toolbar); di Excel, tiap tabel jadi lembar sendiri
+- **Folder bertingkat** (sampai 5 tingkat) di sidebar; pindahkan catatan lewat pilihan folder di editor
+- **Kalender harian**: lihat catatan per tanggal, titik penanda hari yang berisi catatan atau pengingat, dan buat catatan untuk tanggal tertentu
+- **Pengingat & alarm**: atur waktu per catatan (ikon lonceng); alarm berbunyi + notifikasi browser, bisa ditunda 10 menit
+- **Rekam suara**: tombol *Rekam* membuat catatan dari ucapan (bahasa Indonesia); tombol mikrofon di toolbar menyisipkan dikte ke catatan yang sedang dibuka
+- Ajakan **Instal aplikasi** (PWA) di Chrome/Edge/Android, dan petunjuk untuk iPhone/iPad
 - Akun: **masuk dengan Google** (pengguna baru), masuk dengan email + kata sandi untuk akun lama, lupa sandi, ganti sandi/email, hapus akun
 
 ## Struktur
@@ -37,6 +42,7 @@ catatan/
 ├── supabase/
 │   ├── schema.sql                     # tabel notes + kebijakan RLS
 │   ├── migrations/002_fitur_baru.sql  # gambar, berbagi, riwayat, realtime, hapus akun
+│   ├── migrations/003_folder_pengingat.sql  # folder bertingkat + pengingat
 │   └── email-templates/               # template email berbahasa Indonesia (tempel manual di Supabase)
 └── vercel.json          # konfigurasi hosting Vercel
 ```
@@ -47,6 +53,9 @@ catatan/
 2. **Buat tabel:** buka **SQL Editor → New query**, tempel isi [`supabase/schema.sql`](supabase/schema.sql), klik **Run**.
    Lalu ulangi dengan [`supabase/migrations/002_fitur_baru.sql`](supabase/migrations/002_fitur_baru.sql).
    Tanpa migrasi 002 aplikasi tetap jalan, tapi fitur gambar, berbagi, riwayat versi, dan hapus akun disembunyikan.
+   Terakhir jalankan [`supabase/migrations/003_folder_pengingat.sql`](supabase/migrations/003_folder_pengingat.sql)
+   untuk **folder** dan **pengingat**. Tanpa migrasi 003, dua fitur itu tampil sebagai petunjuk saja;
+   kalender, rekam suara, dan tombol instal tidak butuh migrasi.
 3. **Isi konfigurasi:** buka **Project Settings → API Keys**, salin *Project URL* dan kunci
    **anon / publishable** ke `public/config.js`:
    ```js
@@ -158,6 +167,17 @@ tersembunyi di balik tautan "Sudah punya akun dengan email? Masuk di sini" agar 
 tab *Daftar* tidak ditampilkan. Bila Google dinonaktifkan, tampilan lama (email + daftar) kembali otomatis. Ini hanya mengatur
 tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak ada tombol untuk menutup pendaftaran email saja
 (mematikan provider Email juga mematikan login email lama).
+
+## Catatan tentang folder, pengingat, dan rekam suara
+
+- **Folder** disimpan sebagai satu baris per pengguna (tabel `user_folders`, JSON) dan folder tiap catatan di kolom `notes.folder_id`.
+  Menghapus folder tidak menghapus catatan: catatan dipindah ke folder induknya (atau ke "tanpa folder").
+- **Pengingat** disimpan di kolom `notes.remind_at`. Alarm dicek di browser setiap 15 detik, jadi berbunyi **selama Catatan terbuka**
+  (tab di latar belakang boleh, tapi browser bisa menunda hingga sekitar semenit). Tidak ada server push: kalau aplikasi tertutup,
+  pengingat yang terlewat berbunyi begitu aplikasi dibuka lagi. Notifikasi sistem butuh izin dari browser.
+- **Rekam suara** memakai Web Speech API bawaan browser (Chrome, Edge, Safari; Firefox belum mendukung, tombolnya disembunyikan).
+  Di Chrome/Edge audio diproses oleh layanan pengenalan suara milik penyedia browser, bukan oleh Catatan, dan Catatan tidak menyimpan audionya.
+  Header `Permissions-Policy` di `vercel.json` mengizinkan mikrofon hanya untuk situs ini.
 
 ## Fitur akun
 

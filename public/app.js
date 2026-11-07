@@ -102,22 +102,73 @@
     exportImages: $("#exportImages"),
     exportMsg: $("#exportMsg"),
     setExportXlsxBtn: $("#setExportXlsxBtn"),
+    recNoteBtn: $("#recNoteBtn"),
+    folderTree: $("#folderTree"),
+    addFolderBtn: $("#addFolderBtn"),
+    folderFilter: $("#folderFilter"),
+    folderPick: $("#folderPick"),
+    folderSelect: $("#folderSelect"),
+    calendar: $("#calendar"),
+    remindBar: $("#remindBar"),
+    remindBarText: $("#remindBarText"),
+    notifyBtn: $("#notifyBtn"),
+    remindBtn: $("#remindBtn"),
+    remindDialog: $("#remindDialog"),
+    remindNoteTitle: $("#remindNoteTitle"),
+    remindInput: $("#remindInput"),
+    remindQuick: $("#remindQuick"),
+    remindMsg: $("#remindMsg"),
+    remindSaveBtn: $("#remindSaveBtn"),
+    remindClearBtn: $("#remindClearBtn"),
+    alarmDialog: $("#alarmDialog"),
+    alarmList: $("#alarmList"),
+    alarmMuteBtn: $("#alarmMuteBtn"),
+    recBar: $("#recBar"),
+    recText: $("#recText"),
+    recStopBtn: $("#recStopBtn"),
+    installBar: $("#installBar"),
+    installText: $("#installText"),
+    installBtn: $("#installBtn"),
+    installLater: $("#installLater"),
+    installSection: $("#installSection"),
+    setInstallBtn: $("#setInstallBtn"),
   };
+
+  // ---------- Tanggal & folder (fungsi kecil, dipakai di banyak tempat) ----------
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+  function ymd(ts) {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+  function parseYmd(str) {
+    const [y, m, d] = str.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  const FOLDER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+  const MAX_FOLDER_DEPTH = 5;
 
   // ---------- State ----------
   let notes = [];
-  const prefs = Object.assign({ theme: null, sort: "updated" }, load(PREFS_KEY, {}));
+  const prefs = Object.assign({ theme: null, sort: "updated", collapsed: [], installDismissed: 0 }, load(PREFS_KEY, {}));
+  if (!Array.isArray(prefs.collapsed)) prefs.collapsed = [];
   const state = {
     view: "all", activeId: null, query: "", mode: "edit",
     user: null, session: null, authMode: "login", recovering: false,
     emailOpen: false, // form email dibuka lewat tautan (mode Google saja)
-    features: { v2: false }, // v2 = migrasi 002 sudah dijalankan (gambar, berbagi, riwayat, dll.)
+    features: { v2: false, v3: false }, // v2 = migrasi 002 (gambar, berbagi, riwayat); v3 = migrasi 003 (folder, pengingat)
+    calMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    calDay: ymd(Date.now()),
     offline: !navigator.onLine,
     oauthAvailable: false,
   };
   const dirty = new Set(); // catatan yang berubah dan belum terkirim
   const inflight = new Set(); // sedang dikirim
   const pendingDeletes = new Set(); // dihapus permanen, menunggu dikirim
+  let folders = []; // pohon folder: [{ id, name, parent }]
+  let foldersDirty = false; // perubahan folder belum terkirim
+  let foldersAt = 0;
   let saveTimer = null;
   let flushing = null;
   let realtimeChannel = null;
@@ -186,6 +237,10 @@
       row.trashed_at = n.trashed ? Math.round(n.trashedAt || Date.now()) : null;
       row.share_id = n.shareId || null;
     }
+    if (state.features.v3) {
+      row.folder_id = n.folderId && FOLDER_ID_RE.test(n.folderId) ? n.folderId : null;
+      row.remind_at = n.remindAt && !n.trashed ? Math.round(n.remindAt) : null;
+    }
     return row;
   };
 
@@ -201,6 +256,8 @@
     updatedAt: Number(r.updated_at),
     trashedAt: r.trashed_at == null ? null : Number(r.trashed_at),
     shareId: r.share_id || null,
+    folderId: r.folder_id || null,
+    remindAt: r.remind_at == null ? null : Number(r.remind_at),
   });
 
   const isNetworkError = (err) =>
@@ -212,6 +269,59 @@
     if (!error) state.features.v2 = true;
     else if (/^(42703|PGRST204)$/.test(error.code || "")) state.features.v2 = false;
     // kesalahan lain (mis. offline): pakai nilai terakhir dari cache
+
+    // Migrasi 003 (folder & pengingat): kolom baru di notes + tabel user_folders.
+    const cols = await sb.from("notes").select("folder_id,remind_at").limit(1);
+    if (cols.error) {
+      if (/^(42703|PGRST204)$/.test(cols.error.code || "")) state.features.v3 = false;
+      return;
+    }
+    const tbl = await sb.from("user_folders").select("user_id").limit(1);
+    if (!tbl.error) state.features.v3 = true;
+    else if (/^(42P01|PGRST205)$/.test(tbl.error.code || "")) state.features.v3 = false;
+  }
+
+  // Rapikan data folder dari server/cache: id valid, nama wajar, tanpa induk hilang atau lingkaran.
+  function cleanFolders(tree) {
+    if (!Array.isArray(tree)) return [];
+    const seen = new Set();
+    let list = [];
+    for (const f of tree) {
+      if (!f || typeof f !== "object" || !FOLDER_ID_RE.test(String(f.id || "")) || seen.has(f.id)) continue;
+      const name = String(f.name || "").trim().slice(0, 60);
+      if (!name) continue;
+      seen.add(f.id);
+      list.push({ id: String(f.id), name, parent: f.parent ? String(f.parent) : null });
+    }
+    list.forEach((f) => {
+      if (f.parent && !seen.has(f.parent)) f.parent = null;
+    });
+    for (const f of list) {
+      let cur = f;
+      for (let i = 0; cur && i <= list.length; i++) cur = cur.parent ? list.find((x) => x.id === cur.parent) : null;
+      if (cur) f.parent = null; // lingkaran: putus
+    }
+    return list.slice(0, 500);
+  }
+
+  async function fetchFolders() {
+    if (!state.features.v3) return null;
+    const { data, error } = await sb.from("user_folders").select("tree,updated_at").maybeSingle();
+    if (error) throw dbError(error);
+    return data ? { tree: data.tree, updatedAt: Number(data.updated_at) } : { tree: [], updatedAt: 0 };
+  }
+
+  async function saveFolders(snap) {
+    const { error } = await sb
+      .from("user_folders")
+      .upsert({ user_id: state.user.id, tree: snap.tree, updated_at: snap.at }, { onConflict: "user_id" });
+    if (error) throw dbError(error);
+  }
+
+  function mergeFolders(server) {
+    if (!server || foldersDirty) return; // perubahan lokal yang belum terkirim menang
+    folders = cleanFolders(server.tree);
+    foldersAt = server.updatedAt;
   }
 
   async function fetchNotes() {
@@ -268,6 +378,9 @@
             notes,
             dirty: [...dirty, ...inflight],
             deletes: [...pendingDeletes],
+            folders,
+            foldersDirty,
+            foldersAt,
             features: state.features,
             savedAt: Date.now(),
           })
@@ -295,10 +408,13 @@
   function flush() {
     if (flushing) return flushing.then(flush);
     if (!state.user) return Promise.resolve();
-    if (!dirty.size && !pendingDeletes.size) {
+    if (!dirty.size && !pendingDeletes.size && !foldersDirty) {
       setStatus(state.offline ? "offline" : "saved");
       return Promise.resolve();
     }
+    const sendFolders = foldersDirty && state.features.v3;
+    const folderSnap = sendFolders ? { tree: folders.map((f) => ({ ...f })), at: foldersAt } : null;
+    if (sendFolders) foldersDirty = false;
     const ids = [...dirty].slice(0, 500);
     ids.forEach((id) => {
       dirty.delete(id);
@@ -313,13 +429,14 @@
         pendingDeletes.delete(id);
       }
       await saveNotes(batch);
+      if (folderSnap) await saveFolders(folderSnap);
     })()
       .then(() => {
         ids.forEach((id) => inflight.delete(id));
         state.offline = false;
         saveCache();
-        setStatus(dirty.size ? "saving" : "saved");
-        if (dirty.size) saveTimer = setTimeout(flush, 0);
+        setStatus(dirty.size || foldersDirty ? "saving" : "saved");
+        if (dirty.size || foldersDirty) saveTimer = setTimeout(flush, 0);
       })
       .catch((err) => {
         ids.forEach((id) => inflight.delete(id));
@@ -331,6 +448,7 @@
           return;
         }
         ids.forEach((id) => dirty.add(id));
+        if (sendFolders) foldersDirty = true;
         saveCache();
         state.offline = isNetworkError(err);
         setStatus(state.offline ? "offline" : "error");
@@ -367,15 +485,18 @@
     const user = state.user;
     try {
       const server = await fetchNotes();
+      const serverFolders = await fetchFolders();
       if (state.user !== user) return;
       lastFetchAt = Date.now();
       mergeServer(server);
+      mergeFolders(serverFolders);
       state.offline = false;
       saveCache();
       render();
       if (!realtimeChannel) subscribeRealtime(); // mis. aplikasi dibuka saat offline
       purgeOldTrash();
-      if (dirty.size || pendingDeletes.size) persist(null, true);
+      checkReminders();
+      if (dirty.size || pendingDeletes.size || foldersDirty) persist(null, true);
       else setStatus("saved");
     } catch (err) {
       if (isNetworkError(err)) {
@@ -390,7 +511,8 @@
   // ---------- Sinkron realtime ----------
   const sameNote = (a, b) =>
     a.title === b.title && a.content === b.content && a.color === b.color && a.pinned === b.pinned &&
-    a.trashed === b.trashed && (a.shareId || null) === (b.shareId || null) && a.tags.join("\u0000") === b.tags.join("\u0000");
+    a.trashed === b.trashed && (a.shareId || null) === (b.shareId || null) &&
+    (a.folderId || null) === (b.folderId || null) && (a.remindAt || null) === (b.remindAt || null) && a.tags.join("\u0000") === b.tags.join("\u0000");
 
   let remoteRenderTimer = null;
   function scheduleRemoteRender() {
@@ -401,6 +523,7 @@
       renderList();
       renderEditor();
       saveCache();
+      checkReminders();
     }, 120);
   }
 
@@ -479,6 +602,8 @@
       trashed: false,
       createdAt: now,
       updatedAt: now,
+      folderId: null,
+      remindAt: null,
     };
   }
 
@@ -540,10 +665,14 @@
   // ---------- Filtering ----------
   function visibleNotes() {
     const q = state.query.trim().toLowerCase();
+    const folderIds = state.view.startsWith("folder:") ? descendantIds(state.view.slice(7)) : null;
     let list = notes.filter((n) => {
       if (state.view === "trash") return n.trashed;
       if (n.trashed) return false;
       if (state.view === "pinned") return n.pinned;
+      if (state.view === "reminders") return !!n.remindAt;
+      if (state.view === "calendar") return noteOnDay(n, state.calDay);
+      if (folderIds) return !!n.folderId && folderIds.has(n.folderId);
       if (state.view.startsWith("tag:")) return n.tags.includes(state.view.slice(4));
       return true;
     });
@@ -560,8 +689,12 @@
       created: (a, b) => b.createdAt - a.createdAt,
       title: (a, b) => (a.title || "").localeCompare(b.title || "", "id"),
     };
+    if (state.view === "reminders") return list.sort((a, b) => a.remindAt - b.remindAt);
     return list.sort(sorters[prefs.sort] || sorters.updated);
   }
+
+  const noteOnDay = (n, day) =>
+    ymd(n.createdAt) === day || ymd(n.updatedAt) === day || (!!n.remindAt && ymd(n.remindAt) === day);
 
   function allTags() {
     const counts = {};
@@ -576,32 +709,66 @@
   const SHARE_BADGE =
     '<span class="share-badge" title="Dibagikan lewat link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>';
 
+  const BELL_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>';
+
+  function formatRemind(ts) {
+    const d = new Date(ts);
+    const t = `${pad2(d.getHours())}.${pad2(d.getMinutes())}`;
+    if (ymd(d) === ymd(Date.now())) return `Hari ini ${t}`;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (ymd(d) === ymd(tomorrow)) return `Besok ${t}`;
+    return `${d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric" })} ${t}`;
+  }
+
   function cardHtml(n, q) {
+    const remind =
+      n.remindAt && !n.trashed
+        ? `<span class="remind-chip${n.remindAt <= Date.now() ? " late" : ""}" title="Pengingat">${BELL_SVG}${formatRemind(n.remindAt)}</span>`
+        : "";
     const tags = n.tags.slice(0, 3).map((t) => `<span class="mini-tag">#${escapeHtml(t)}</span>`).join("");
     return `
       <button class="note-card${n.id === state.activeId ? " active" : ""}" data-id="${n.id}" style="--note-color:${n.color || "transparent"}">
         <h4>${n.pinned && !n.trashed ? PIN_SVG : ""}<span class="t">${n.title ? highlight(n.title, q) : '<span style="color:var(--faint)">Tanpa judul</span>'}</span></h4>
         <p>${snippet(n, q)}</p>
-        <div class="meta"><span>${relativeTime(n.updatedAt)}</span>${n.shareId && !n.trashed ? SHARE_BADGE : ""}${tags}</div>
+        <div class="meta"><span>${relativeTime(n.updatedAt)}</span>${remind}${n.shareId && !n.trashed ? SHARE_BADGE : ""}${tags}</div>
       </button>`;
+  }
+
+  function viewTitle() {
+    const v = state.view;
+    if (v.startsWith("tag:")) return "#" + v.slice(4);
+    if (v.startsWith("folder:")) {
+      const f = folderById(v.slice(7));
+      return f ? f.name : "Folder";
+    }
+    if (v === "calendar")
+      return parseYmd(state.calDay).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
+    return { all: "Semua catatan", pinned: "Disematkan", trash: "Sampah", reminders: "Pengingat & alarm" }[v] || "Catatan";
+  }
+
+  function emptyMessage(q) {
+    if (q) return `Tidak ada catatan yang cocok dengan “${escapeHtml(q)}”.`;
+    const v = state.view;
+    if (v === "trash") return "Sampah kosong.";
+    if (v === "pinned") return "Belum ada catatan yang disematkan.";
+    if (v === "calendar") return "Tidak ada catatan di tanggal ini.<br>Tekan <b>+ Catatan</b> di atas untuk membuatnya.";
+    if (v === "reminders")
+      return state.features.v3
+        ? "Belum ada pengingat.<br>Buka catatan lalu tekan ikon lonceng 🔔 di toolbar."
+        : "Fitur pengingat aktif setelah migrasi database 003 dijalankan (lihat README).";
+    if (v.startsWith("folder:")) return "Folder ini masih kosong.<br>Pindahkan catatan ke sini lewat pilihan folder di editor.";
+    return "Belum ada catatan.<br>Tekan <b>N</b> untuk membuat yang pertama.";
   }
 
   function renderList() {
     const list = visibleNotes();
     const q = state.query.trim();
-
-    const titles = { all: "Semua catatan", pinned: "Disematkan", trash: "Sampah" };
-    el.listTitle.textContent = state.view.startsWith("tag:") ? "#" + state.view.slice(4) : titles[state.view];
+    el.listTitle.textContent = viewTitle();
 
     if (!list.length) {
-      const msg = q
-        ? `Tidak ada catatan yang cocok dengan “${escapeHtml(q)}”.`
-        : state.view === "trash"
-        ? "Sampah kosong."
-        : state.view === "pinned"
-        ? "Belum ada catatan yang disematkan."
-        : "Belum ada catatan.<br>Tekan <b>N</b> untuk membuat yang pertama.";
-      el.noteList.innerHTML = `<div class="list-empty">${msg}</div>`;
+      el.noteList.innerHTML = `<div class="list-empty">${emptyMessage(q)}</div>`;
     } else if (state.view === "all" && !q) {
       const pinned = list.filter((n) => n.pinned);
       const others = list.filter((n) => !n.pinned);
@@ -609,6 +776,19 @@
       if (pinned.length) html += `<div class="group-label">Disematkan</div>` + pinned.map((n) => cardHtml(n, q)).join("");
       if (others.length) html += (pinned.length ? `<div class="group-label">Lainnya</div>` : "") + others.map((n) => cardHtml(n, q)).join("");
       el.noteList.innerHTML = html;
+    } else if (state.view === "reminders") {
+      const now = Date.now();
+      const today = ymd(now);
+      const groupOf = (n) => (n.remindAt <= now ? "Terlambat" : ymd(n.remindAt) === today ? "Hari ini" : "Akan datang");
+      let last = "";
+      el.noteList.innerHTML = list
+        .map((n) => {
+          const g = groupOf(n);
+          const head = g !== last ? `<div class="group-label">${g}</div>` : "";
+          last = g;
+          return head + cardHtml(n, q);
+        })
+        .join("");
     } else {
       el.noteList.innerHTML = list.map((n) => cardHtml(n, q)).join("");
     }
@@ -618,6 +798,7 @@
     document.querySelector('[data-count="all"]').textContent = live.length;
     document.querySelector('[data-count="pinned"]').textContent = live.filter((n) => n.pinned).length;
     document.querySelector('[data-count="trash"]').textContent = notes.length - live.length;
+    document.querySelector('[data-count="reminders"]').textContent = live.filter((n) => n.remindAt).length || "";
 
     // bar sampah
     const trashCount = notes.length - live.length;
@@ -629,6 +810,9 @@
     // nav state
     el.nav.forEach((b) => b.classList.toggle("active", b.dataset.view === state.view));
     renderTags();
+    renderFolders(live);
+    renderCalendar();
+    renderRemindBar();
   }
 
   function renderTags() {
@@ -643,7 +827,243 @@
       : '<div class="tag-empty">Belum ada tag</div>';
   }
 
+  // ---------- Folder bertingkat ----------
+  const byName = (a, b) => a.name.localeCompare(b.name, "id");
+  const folderById = (id) => folders.find((f) => f.id === id) || null;
+  const childrenOf = (pid) => folders.filter((f) => (f.parent || null) === (pid || null)).sort(byName);
+
+  // Id folder ini beserta semua subfoldernya.
+  function descendantIds(id) {
+    const out = new Set([id]);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const f of folders) if (f.parent && out.has(f.parent) && !out.has(f.id)) (out.add(f.id), (grew = true));
+    }
+    return out;
+  }
+
+  function folderDepth(id) {
+    let d = 0;
+    for (let f = folderById(id); f && f.parent && d < 20; f = folderById(f.parent)) d++;
+    return d;
+  }
+
+  // Daftar datar berurutan pohon (untuk pilihan <select>): [{ folder, depth }]
+  function flatFolders(pid = null, depth = 0, out = []) {
+    for (const f of childrenOf(pid)) {
+      out.push({ folder: f, depth });
+      flatFolders(f.id, depth + 1, out);
+    }
+    return out;
+  }
+
+  const FOLDER_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+  const CARET_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
+  const act = (kind, id, title, path) =>
+    `<button class="icon-btn" data-act="${kind}" data-id="${id}" title="${title}" aria-label="${title}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg></button>`;
+
+  function renderFolders(live) {
+    const on = state.features.v3;
+    el.addFolderBtn.classList.toggle("hidden", !on);
+    if (!on) {
+      el.folderTree.innerHTML =
+        '<div class="folder-hint">Folder aktif setelah migrasi database 003 dijalankan (lihat README).</div>';
+    } else if (!folders.length) {
+      el.folderTree.innerHTML = '<div class="folder-hint">Belum ada folder. Tekan + untuk membuat.</div>';
+    } else {
+      const counts = {};
+      for (const n of live) if (n.folderId) counts[n.folderId] = (counts[n.folderId] || 0) + 1;
+      const total = (id) => [...descendantIds(id)].reduce((sum, x) => sum + (counts[x] || 0), 0);
+      const collapsed = new Set(prefs.collapsed);
+      const rows = [];
+      const walk = (pid, depth) => {
+        for (const f of childrenOf(pid)) {
+          const kids = childrenOf(f.id).length > 0;
+          const open = !collapsed.has(f.id);
+          const name = escapeHtml(f.name);
+          rows.push(
+            `<div class="folder-row${state.view === "folder:" + f.id ? " active" : ""}" style="padding-left:${depth * 14}px">` +
+              `<button class="folder-caret${kids ? (open ? " open" : "") : " none"}" data-toggle="${f.id}" tabindex="${kids ? 0 : -1}" aria-label="${open ? "Ciutkan" : "Buka"} ${name}">${CARET_SVG}</button>` +
+              `<button class="folder-main" data-open="${f.id}" title="${name}">${FOLDER_SVG}<span class="f-name">${name}</span></button>` +
+              `<em class="count">${total(f.id) || ""}</em>` +
+              `<span class="folder-acts">` +
+              (folderDepth(f.id) + 1 < MAX_FOLDER_DEPTH ? act("sub", f.id, "Subfolder baru", '<path d="M12 5v14M5 12h14"/>') : "") +
+              act("rename", f.id, "Ganti nama", '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>') +
+              act("delete", f.id, "Hapus folder", '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>') +
+              `</span></div>`
+          );
+          if (kids && open) walk(f.id, depth + 1);
+        }
+      };
+      walk(null, 0);
+      el.folderTree.innerHTML = rows.join("");
+    }
+
+    // Pilihan folder untuk layar sempit (pohon di sidebar disembunyikan di sana).
+    const flat = on ? flatFolders() : [];
+    el.folderFilter.classList.toggle("hidden", !flat.length);
+    if (flat.length) {
+      const cur = state.view.startsWith("folder:") ? state.view.slice(7) : "";
+      el.folderFilter.innerHTML =
+        '<option value="">Semua folder</option>' +
+        flat.map(({ folder, depth }) => `<option value="${folder.id}">${"\u2003".repeat(depth)}${escapeHtml(folder.name)}</option>`).join("");
+      el.folderFilter.value = cur;
+    }
+  }
+
+  function askFolderName(title, initial = "") {
+    const name = (prompt(title, initial) || "").trim().replace(/\s+/g, " ").slice(0, 60);
+    return name;
+  }
+
+  function folderNameTaken(name, parent, exceptId) {
+    return folders.some((f) => f.id !== exceptId && (f.parent || null) === (parent || null) && f.name.toLowerCase() === name.toLowerCase());
+  }
+
+  function persistFolders() {
+    foldersAt = Math.max(Date.now(), foldersAt + 1);
+    foldersDirty = true;
+    persist(null, true);
+  }
+
+  function addFolder(parentId = null) {
+    if (!state.features.v3) return toast("Jalankan migrasi database 003 dulu (lihat README).");
+    if (parentId && folderDepth(parentId) + 1 >= MAX_FOLDER_DEPTH) return toast(`Folder hanya bisa sampai ${MAX_FOLDER_DEPTH} tingkat`);
+    const name = askFolderName(parentId ? `Nama subfolder di “${folderById(parentId).name}”:` : "Nama folder baru:");
+    if (!name) return;
+    if (folderNameTaken(name, parentId)) return toast("Sudah ada folder dengan nama itu di sini");
+    const f = { id: uid(), name, parent: parentId };
+    folders.push(f);
+    if (parentId) prefs.collapsed = prefs.collapsed.filter((x) => x !== parentId), savePrefs();
+    persistFolders();
+    setView("folder:" + f.id);
+  }
+
+  function renameFolder(id) {
+    const f = folderById(id);
+    if (!f) return;
+    const name = askFolderName("Ganti nama folder:", f.name);
+    if (!name || name === f.name) return;
+    if (folderNameTaken(name, f.parent, id)) return toast("Sudah ada folder dengan nama itu di sini");
+    f.name = name;
+    persistFolders();
+    renderList();
+    renderEditor();
+  }
+
+  function deleteFolder(id) {
+    const f = folderById(id);
+    if (!f) return;
+    const gone = descendantIds(id);
+    const inside = notes.filter((n) => n.folderId && gone.has(n.folderId));
+    const parent = f.parent ? folderById(f.parent) : null;
+    const msg =
+      `Hapus folder “${f.name}”${gone.size > 1 ? ` beserta ${gone.size - 1} subfolder` : ""}?\n` +
+      (inside.length ? `${inside.length} catatan di dalamnya TIDAK dihapus, dipindahkan ke ${parent ? `“${parent.name}”` : "tanpa folder"}.` : "Folder ini kosong.");
+    if (!confirm(msg)) return;
+    inside.forEach((n) => {
+      n.folderId = parent ? parent.id : null;
+      stamp(n);
+      dirty.add(n.id);
+    });
+    folders = folders.filter((x) => !gone.has(x.id));
+    if (state.view.startsWith("folder:") && gone.has(state.view.slice(7))) state.view = "all";
+    persistFolders();
+    persist(null, true);
+    render();
+    toast("Folder dihapus");
+  }
+
+  function toggleFolder(id) {
+    const set = new Set(prefs.collapsed);
+    set.has(id) ? set.delete(id) : set.add(id);
+    prefs.collapsed = [...set];
+    savePrefs();
+    renderList();
+  }
+
+  // ---------- Kalender harian ----------
+  const DOW = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+
+  function renderCalendar() {
+    const show = state.view === "calendar";
+    el.calendar.classList.toggle("hidden", !show);
+    if (!show) return;
+    const m = state.calMonth;
+    const first = new Date(m.getFullYear(), m.getMonth(), 1);
+    const lead = (first.getDay() + 6) % 7; // pekan mulai Senin
+    const cells = Math.ceil((lead + new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate()) / 7) * 7;
+
+    const noted = new Set();
+    const belled = new Set();
+    for (const n of notes) {
+      if (n.trashed) continue;
+      noted.add(ymd(n.createdAt));
+      noted.add(ymd(n.updatedAt));
+      if (n.remindAt) belled.add(ymd(n.remindAt));
+    }
+    const today = ymd(Date.now());
+    let html = `<div class="cal-head">
+      <b>${first.toLocaleDateString("id-ID", { month: "long", year: "numeric" })}</b>
+      <button class="cal-today" data-cal="today">Hari ini</button>
+      <button class="icon-btn" data-cal="prev" title="Bulan sebelumnya" aria-label="Bulan sebelumnya"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+      <button class="icon-btn" data-cal="next" title="Bulan berikutnya" aria-label="Bulan berikutnya"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+    </div><div class="cal-grid">` + DOW.map((d) => `<div class="cal-dow">${d}</div>`).join("");
+    for (let i = 0; i < cells; i++) {
+      const d = new Date(m.getFullYear(), m.getMonth(), 1 - lead + i);
+      const key = ymd(d);
+      const cls = ["cal-day", d.getMonth() !== m.getMonth() ? "out" : "", key === today ? "today" : "", key === state.calDay ? "sel" : ""].join(" ");
+      html +=
+        `<button class="${cls}" data-day="${key}" aria-label="${d.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}">${d.getDate()}` +
+        (noted.has(key) ? '<i class="dot has"></i>' : "") +
+        (belled.has(key) ? '<i class="dot bell"></i>' : "") +
+        `</button>`;
+    }
+    html += `</div><button class="btn-secondary cal-add" data-cal="add">+ Catatan di ${parseYmd(state.calDay).toLocaleDateString("id-ID", { day: "numeric", month: "long" })}</button>`;
+    el.calendar.innerHTML = html;
+  }
+
+  function calendarNav(kind) {
+    const m = state.calMonth;
+    if (kind === "prev") state.calMonth = new Date(m.getFullYear(), m.getMonth() - 1, 1);
+    else if (kind === "next") state.calMonth = new Date(m.getFullYear(), m.getMonth() + 1, 1);
+    else if (kind === "today") {
+      const now = new Date();
+      state.calMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      state.calDay = ymd(now);
+    } else if (kind === "add") return createNote();
+    renderList();
+  }
+
+  function pickDay(day) {
+    state.calDay = day;
+    const d = parseYmd(day);
+    if (d.getMonth() !== state.calMonth.getMonth() || d.getFullYear() !== state.calMonth.getFullYear())
+      state.calMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+    const list = visibleNotes();
+    if (!list.some((n) => n.id === state.activeId)) state.activeId = window.innerWidth > 760 && list[0] ? list[0].id : null;
+    render();
+  }
+
+  // ---------- Bar pengingat ----------
+  function renderRemindBar() {
+    const show = state.view === "reminders" && state.features.v3;
+    el.remindBar.classList.toggle("hidden", !show);
+    if (!show) return;
+    const perm = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
+    el.remindBarText.textContent = {
+      unsupported: "Browser ini tidak mendukung notifikasi. Alarm tetap berbunyi di dalam aplikasi.",
+      granted: "Notifikasi aktif. Alarm berbunyi selama Catatan terbuka di browser.",
+      denied: "Notifikasi diblokir di browser. Alarm tetap berbunyi di dalam aplikasi.",
+      default: "Aktifkan notifikasi agar pengingat muncul walau tab tidak terlihat.",
+    }[perm];
+    el.notifyBtn.classList.toggle("hidden", perm !== "default");
+  }
+
   function renderEditor() {
+    if (voice.active && voice.noteId !== state.activeId) stopDictation();
     const n = activeNote();
     el.emptyState.classList.toggle("hidden", !!n);
     el.editor.classList.toggle("hidden", !n);
@@ -655,7 +1075,7 @@
 
     const readOnly = n.trashed;
     el.titleInput.readOnly = readOnly;
-    el.contentInput.readOnly = readOnly;
+    el.contentInput.readOnly = readOnly || voice.active;
     el.tagInput.classList.toggle("hidden", readOnly);
     el.pinBtn.classList.toggle("hidden", readOnly);
     el.colorPicker.classList.toggle("hidden", readOnly);
@@ -667,6 +1087,20 @@
     el.moreMenu.querySelector('[data-action="share"]').classList.toggle("hidden", !state.features.v2 || readOnly);
     el.moreMenu.querySelector('[data-action="history"]').classList.toggle("hidden", !state.features.v2);
     el.moreMenu.querySelector("hr").classList.toggle("hidden", !state.features.v2);
+
+    // folder & pengingat (butuh migrasi 003)
+    const v3 = state.features.v3;
+    const flat = v3 ? flatFolders() : [];
+    el.folderPick.classList.toggle("hidden", !flat.length || readOnly);
+    if (flat.length) {
+      el.folderSelect.innerHTML =
+        '<option value="">Tanpa folder</option>' +
+        flat.map(({ folder, depth }) => `<option value="${folder.id}">${"\u2003".repeat(depth)}${escapeHtml(folder.name)}</option>`).join("");
+      el.folderSelect.value = n.folderId && folderById(n.folderId) ? n.folderId : "";
+    }
+    el.remindBtn.classList.toggle("hidden", !v3 || readOnly);
+    el.remindBtn.classList.toggle("set", !!n.remindAt);
+    el.remindBtn.title = n.remindAt ? `Pengingat: ${formatRemind(n.remindAt)}` : "Atur pengingat";
 
     renderChips(n);
     renderColors(n);
@@ -720,9 +1154,20 @@
   function createNote() {
     const now = Date.now();
     const tag = state.view.startsWith("tag:") ? [state.view.slice(4)] : [];
-    const n = { id: uid(), title: "", content: "", tags: tag, color: "", pinned: state.view === "pinned", trashed: false, createdAt: now, updatedAt: now };
+    const inFolder = state.view.startsWith("folder:") && folderById(state.view.slice(7));
+    let createdAt = now;
+    if (state.view === "calendar" && state.calDay !== ymd(now)) {
+      // catatan untuk hari lain: tanggal dibuatnya jatuh di hari yang dipilih (jam sekarang, atau tengah hari)
+      const d = parseYmd(state.calDay);
+      d.setHours(12, 0, 0, 0);
+      createdAt = d.getTime();
+    }
+    const n = {
+      id: uid(), title: "", content: "", tags: tag, color: "", pinned: state.view === "pinned", trashed: false,
+      createdAt, updatedAt: now, folderId: inFolder ? inFolder.id : null, remindAt: null,
+    };
     notes.unshift(n);
-    if (state.view === "trash") state.view = "all";
+    if (state.view === "trash" || state.view === "reminders") state.view = "all";
     state.query = "";
     el.searchInput.value = "";
     state.activeId = n.id;
@@ -774,6 +1219,7 @@
     n.trashed = true;
     n.trashedAt = Date.now();
     n.pinned = false;
+    n.remindAt = null; // catatan di sampah tidak berbunyi
     stamp(n);
     state.activeId = null;
     persist(n, true);
@@ -1351,9 +1797,485 @@
     resolveImages(el.sharedContent);
   }
 
+  // ---------- Pengingat & alarm ----------
+  // Pengingat disimpan di database (kolom remind_at) dan berbunyi selama aplikasi terbuka di browser.
+  // Tidak ada server push: bila aplikasi tertutup, alarm berbunyi saat dibuka lagi.
+  const ringing = new Set(); // id catatan yang alarmnya sedang berbunyi
+  let alarmMuted = false;
+  let audioCtx = null;
+  let beepTimer = null;
+  let beepStopTimer = null;
+  const SNOOZE_MIN = 10;
+
+  const toLocalInput = (ts) => {
+    const d = new Date(ts);
+    return `${ymd(d)}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  };
+
+  function unlockAudio() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      audioCtx = audioCtx || new AC();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+    } catch {
+      /* tanpa suara: dialog dan notifikasi tetap muncul */
+    }
+  }
+
+  function beep() {
+    if (!audioCtx) return;
+    [0, 0.28].forEach((delay) => {
+      const t = audioCtx.currentTime + delay;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.25);
+    });
+  }
+
+  function startSound() {
+    if (alarmMuted || beepTimer) return;
+    unlockAudio();
+    // Getar hanya jika pengguna pernah berinteraksi dengan halaman (kalau tidak, browser menolaknya).
+    if (navigator.vibrate && navigator.userActivation && navigator.userActivation.hasBeenActive) navigator.vibrate([300, 150, 300]);
+    beep();
+    beepTimer = setInterval(beep, 1500);
+    beepStopTimer = setTimeout(stopSound, 90_000); // jangan berbunyi tanpa henti
+  }
+
+  function stopSound() {
+    clearInterval(beepTimer);
+    clearTimeout(beepStopTimer);
+    beepTimer = beepStopTimer = null;
+  }
+
+  function showNotification(n) {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    const title = n.title || "Pengingat catatan";
+    const opts = {
+      body: plainText(n.content).slice(0, 120) || "Waktunya melihat catatan ini.",
+      tag: "remind-" + n.id,
+      icon: "icons/icon-192.png",
+      requireInteraction: true,
+      data: { id: n.id },
+    };
+    const fallback = () => {
+      try {
+        const x = new Notification(title, opts);
+        x.onclick = () => (window.focus(), x.close());
+      } catch {
+        /* beberapa browser HP hanya mengizinkan lewat service worker */
+      }
+    };
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
+      navigator.serviceWorker.getRegistration().then((reg) => (reg ? reg.showNotification(title, opts) : fallback())).catch(fallback);
+    } else fallback();
+  }
+
+  function checkReminders() {
+    if (!state.user || !state.features.v3) return;
+    const now = Date.now();
+    const due = notes.filter((n) => !n.trashed && n.remindAt && n.remindAt <= now);
+    const dueIds = new Set(due.map((n) => n.id));
+    let changed = false;
+    for (const id of [...ringing]) {
+      if (!dueIds.has(id)) (ringing.delete(id), (changed = true)); // sudah ditunda/selesai (mis. di perangkat lain)
+    }
+    for (const n of due) {
+      if (ringing.has(n.id)) continue;
+      ringing.add(n.id);
+      changed = true;
+      showNotification(n);
+    }
+    if (changed) renderAlarm();
+  }
+
+  function renderAlarm() {
+    if (!ringing.size) {
+      alarmMuted = false;
+      stopSound();
+      if (el.alarmDialog.open) el.alarmDialog.close();
+      return;
+    }
+    el.alarmList.innerHTML = [...ringing]
+      .map((id) => notes.find((n) => n.id === id))
+      .filter(Boolean)
+      .sort((a, b) => a.remindAt - b.remindAt)
+      .map(
+        (n) => `<div class="alarm-item" data-id="${n.id}">
+          <h4>${escapeHtml(n.title || "Tanpa judul")}</h4>
+          <small>Dijadwalkan ${formatRemind(n.remindAt)}</small>
+          <div class="alarm-acts">
+            <button class="btn-primary" data-alarm="open">Buka</button>
+            <button class="btn-secondary" data-alarm="snooze">Tunda ${SNOOZE_MIN} menit</button>
+            <button class="btn-secondary" data-alarm="done">Selesai</button>
+          </div></div>`
+      )
+      .join("");
+    el.alarmMuteBtn.classList.toggle("hidden", alarmMuted);
+    if (!el.alarmDialog.open) el.alarmDialog.showModal(); // tampil di atas dialog lain yang terbuka
+    startSound();
+  }
+
+  function setRemind(n, ts) {
+    n.remindAt = ts;
+    stamp(n);
+    persist(n, true);
+    ringing.delete(n.id);
+    renderList();
+    renderEditor();
+    renderAlarm();
+  }
+
+  function onAlarmClick(e) {
+    const b = e.target.closest("[data-alarm]");
+    const item = e.target.closest("[data-id]");
+    const n = item && notes.find((x) => x.id === item.dataset.id);
+    if (!b || !n) return;
+    const kind = b.dataset.alarm;
+    if (kind === "snooze") {
+      setRemind(n, Date.now() + SNOOZE_MIN * 60_000);
+      toast(`Ditunda ${SNOOZE_MIN} menit`);
+    } else if (kind === "done") {
+      setRemind(n, null);
+    } else {
+      el.alarmDialog.close();
+      if (state.view !== "all") state.view = "all";
+      state.query = "";
+      el.searchInput.value = "";
+      selectNote(n.id);
+    }
+  }
+
+  function openRemind() {
+    const n = activeNote();
+    if (!n || n.trashed) return;
+    if (!state.features.v3) return toast("Jalankan migrasi database 003 dulu (lihat README).");
+    unlockAudio();
+    el.remindNoteTitle.textContent = n.title || "Tanpa judul";
+    let t = n.remindAt;
+    if (!t) {
+      t = Date.now() + 3600_000;
+      t = Math.ceil(t / 300_000) * 300_000; // bulatkan ke 5 menit berikutnya
+    }
+    el.remindInput.value = toLocalInput(t);
+    el.remindClearBtn.classList.toggle("hidden", !n.remindAt);
+    el.remindMsg.textContent = "";
+    el.remindMsg.className = "set-msg";
+    el.remindDialog.showModal();
+  }
+
+  function saveRemind() {
+    const n = activeNote();
+    if (!n) return;
+    const ts = new Date(el.remindInput.value).getTime();
+    const fail = (text) => {
+      el.remindMsg.textContent = text;
+      el.remindMsg.className = "set-msg err";
+    };
+    if (!Number.isFinite(ts)) return fail("Pilih tanggal dan jam pengingat.");
+    if (ts <= Date.now()) return fail("Waktunya sudah lewat. Pilih waktu yang akan datang.");
+    unlockAudio();
+    setRemind(n, ts);
+    el.remindDialog.close();
+    toast(`Pengingat diatur: ${formatRemind(ts)}`);
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission().then(renderRemindBar).catch(() => {});
+    }
+  }
+
+  function quickRemind(kind) {
+    let t;
+    if (kind === "tomorrow") {
+      t = new Date();
+      t.setDate(t.getDate() + 1);
+      t.setHours(8, 0, 0, 0);
+      t = t.getTime();
+    } else t = Date.now() + Number(kind) * 60_000;
+    el.remindInput.value = toLocalInput(t);
+  }
+
+  // ---------- Rekam suara (dikte) ----------
+  // Memakai Web Speech API bawaan browser (Chrome, Edge, Safari). Di Chrome/Edge audio diproses
+  // oleh layanan pengenalan suara milik Google/Microsoft; Catatan sendiri tidak menyimpan audionya.
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const voice = { rec: null, active: false, noteId: null, before: "", after: "", committed: "", interim: "", quiet: 0, heard: false };
+
+  function applyDictation() {
+    const n = notes.find((x) => x.id === voice.noteId);
+    if (!n) return;
+    const text = [voice.committed, voice.interim].filter(Boolean).join(" ");
+    const lead = voice.before && text && !/\s$/.test(voice.before) ? " " : "";
+    const value = voice.before + lead + text + voice.after;
+    if (value === n.content) return;
+    n.content = value;
+    if (state.activeId === n.id) {
+      el.contentInput.value = value;
+      const caret = (voice.before + lead + text).length;
+      el.contentInput.setSelectionRange(caret, caret);
+    }
+    touch(n);
+  }
+
+  function setRecUi(on) {
+    el.recBar.classList.toggle("hidden", !on);
+    el.contentInput.classList.toggle("dictating", on);
+    const mic = el.formatBar.querySelector('[data-fmt="mic"]');
+    if (mic) mic.classList.toggle("rec-on", on);
+    if (on) el.recText.textContent = "Mendengarkan… bicaralah";
+  }
+
+  function startDictation() {
+    const n = activeNote();
+    if (!SpeechRec || !n || n.trashed || voice.active) return;
+    if (state.mode !== "edit") {
+      state.mode = "edit";
+      renderMode();
+    }
+    const ta = el.contentInput;
+    const start = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+    const end = ta.selectionEnd == null ? start : ta.selectionEnd;
+    Object.assign(voice, {
+      active: true, noteId: n.id, before: ta.value.slice(0, start), after: ta.value.slice(end),
+      committed: "", interim: "", quiet: 0, heard: false,
+    });
+    const rec = new SpeechRec();
+    voice.rec = rec;
+    rec.lang = "id-ID";
+    rec.interimResults = true;
+    rec.continuous = !/android/i.test(navigator.userAgent); // di Android hasil "continuous" sering terduplikasi
+    rec.maxAlternatives = 1;
+
+    rec.onresult = (e) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        const t = r[0].transcript;
+        if (r.isFinal) {
+          const piece = t.trim();
+          if (piece) voice.committed += (voice.committed ? " " : "") + piece;
+        } else interim += t;
+      }
+      voice.interim = interim.trim();
+      voice.heard = true;
+      voice.quiet = 0;
+      el.recText.textContent = voice.interim ? "…" + voice.interim.slice(-60) : "Mendengarkan… bicaralah";
+      applyDictation();
+    };
+    rec.onerror = (e) => {
+      const msg = {
+        "not-allowed": "Izin mikrofon ditolak. Izinkan mikrofon untuk situs ini di pengaturan browser.",
+        "service-not-allowed": "Browser tidak mengizinkan rekam suara di sini.",
+        "audio-capture": "Mikrofon tidak ditemukan.",
+        network: "Rekam suara butuh koneksi internet.",
+        "language-not-supported": "Bahasa Indonesia belum didukung browser ini untuk rekam suara.",
+      }[e.error];
+      if (msg) {
+        toast(msg);
+        voice.active = false;
+      }
+    };
+    rec.onend = () => {
+      if (voice.active && voice.rec === rec) {
+        // Browser menutup sesi setelah hening; sambung lagi kecuali sudah terlalu lama diam.
+        voice.quiet = voice.heard ? 0 : voice.quiet + 1;
+        voice.heard = false;
+        if (voice.quiet >= 3) {
+          toast("Rekaman berhenti karena tidak ada suara");
+          voice.active = false;
+        } else {
+          try {
+            return void rec.start(); // hasil sesi baru mulai dari nol; yang lama sudah tersimpan di voice.committed
+          } catch {
+            voice.active = false;
+          }
+        }
+      }
+      if (voice.rec === rec) {
+        voice.rec = null;
+        voice.interim = "";
+        voice.noteId = null;
+        setRecUi(false);
+        const cur = activeNote();
+        el.contentInput.readOnly = !!(cur && cur.trashed);
+      }
+    };
+    try {
+      setRecUi(true);
+      el.contentInput.readOnly = true;
+      rec.start();
+    } catch {
+      voice.active = false;
+      voice.rec = null;
+      setRecUi(false);
+      el.contentInput.readOnly = false;
+      toast("Tidak bisa memulai rekam suara");
+    }
+  }
+
+  function stopDictation() {
+    if (!voice.rec) return (voice.active = false);
+    voice.active = false;
+    el.recText.textContent = "Menyelesaikan…";
+    try {
+      voice.rec.stop(); // hasil terakhir masih bisa datang sebelum onend
+    } catch {
+      voice.rec = null;
+      setRecUi(false);
+    }
+    el.contentInput.readOnly = false;
+  }
+
+  function recordNewNote() {
+    if (voice.active) return stopDictation();
+    createNote();
+    startDictation();
+  }
+
+  // ---------- Pasang aplikasi (PWA) ----------
+  let installEvent = null;
+  const INSTALL_SNOOZE_MS = 14 * 24 * 3600 * 1000;
+  const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  function updateInstallUi() {
+    const canPrompt = !!installEvent && !isStandalone();
+    const ios = !canPrompt && isIOS() && !isStandalone();
+    el.installSection.classList.toggle("hidden", !canPrompt);
+    const snoozed = prefs.installDismissed && Date.now() - prefs.installDismissed < INSTALL_SNOOZE_MS;
+    el.installBar.classList.toggle("hidden", !state.user || snoozed || !(canPrompt || ios));
+    if (ios) {
+      el.installText.innerHTML = "💡 Pasang <b>Catatan</b> di iPhone/iPad: ketuk tombol <b>Bagikan</b>, lalu pilih <b>Tambahkan ke Layar Utama</b>.";
+      el.installBtn.textContent = "Mengerti";
+    } else {
+      el.installText.innerHTML = "💡 Pasang <b>Catatan</b> di perangkatmu agar lebih cepat dibuka dan bisa dipakai offline.";
+      el.installBtn.textContent = "Instal sekarang";
+    }
+  }
+
+  async function installApp() {
+    if (!installEvent) {
+      prefs.installDismissed = Date.now(); // petunjuk iOS: cukup dibaca
+      savePrefs();
+      return updateInstallUi();
+    }
+    const ev = installEvent;
+    installEvent = null;
+    try {
+      await ev.prompt();
+      const { outcome } = await ev.userChoice;
+      if (outcome !== "accepted") (prefs.installDismissed = Date.now()), savePrefs();
+    } catch {
+      /* dibatalkan */
+    }
+    updateInstallUi();
+  }
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    installEvent = e;
+    updateInstallUi();
+  });
+  window.addEventListener("appinstalled", () => {
+    installEvent = null;
+    updateInstallUi();
+    toast("Catatan sudah terpasang ✓");
+  });
+
   // ---------- Events ----------
-  el.newNoteBtn.addEventListener("click", createNote);
-  el.emptyNewBtn.addEventListener("click", createNote);
+  el.newNoteBtn.addEventListener("click", () => createNote());
+  el.emptyNewBtn.addEventListener("click", () => createNote());
+  el.recNoteBtn.addEventListener("click", recordNewNote);
+  el.recStopBtn.addEventListener("click", stopDictation);
+  if (SpeechRec) {
+    el.recNoteBtn.classList.remove("hidden");
+    el.formatBar.querySelector('[data-fmt="mic"]').classList.remove("hidden");
+  }
+
+  // Folder
+  el.addFolderBtn.addEventListener("click", () => addFolder(null));
+  el.folderTree.addEventListener("click", (e) => {
+    const a = e.target.closest("[data-act]");
+    if (a) {
+      const id = a.dataset.id;
+      if (a.dataset.act === "sub") addFolder(id);
+      else if (a.dataset.act === "rename") renameFolder(id);
+      else deleteFolder(id);
+      return;
+    }
+    const t = e.target.closest("[data-toggle]");
+    if (t) return toggleFolder(t.dataset.toggle);
+    const o = e.target.closest("[data-open]");
+    if (o) setView(state.view === "folder:" + o.dataset.open ? "all" : "folder:" + o.dataset.open);
+  });
+  el.folderFilter.addEventListener("change", () => setView(el.folderFilter.value ? "folder:" + el.folderFilter.value : "all"));
+  el.folderSelect.addEventListener("change", () => {
+    const n = activeNote();
+    if (!n) return;
+    n.folderId = el.folderSelect.value || null;
+    touch(n);
+    toast(n.folderId ? `Dipindahkan ke “${folderById(n.folderId).name}”` : "Dikeluarkan dari folder");
+  });
+
+  // Kalender
+  el.calendar.addEventListener("click", (e) => {
+    const c = e.target.closest("[data-cal]");
+    if (c) return calendarNav(c.dataset.cal);
+    const d = e.target.closest("[data-day]");
+    if (d) pickDay(d.dataset.day);
+  });
+
+  // Pengingat & alarm
+  el.remindBtn.addEventListener("click", openRemind);
+  el.remindSaveBtn.addEventListener("click", saveRemind);
+  el.remindClearBtn.addEventListener("click", () => {
+    const n = activeNote();
+    if (n) setRemind(n, null);
+    el.remindDialog.close();
+    toast("Pengingat dihapus");
+  });
+  el.remindQuick.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-add]");
+    if (b) quickRemind(b.dataset.add);
+  });
+  el.remindInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveRemind();
+    }
+  });
+  el.notifyBtn.addEventListener("click", () => {
+    if (typeof Notification === "undefined") return;
+    unlockAudio();
+    Notification.requestPermission().then(renderRemindBar).catch(() => {});
+  });
+  el.alarmList.addEventListener("click", onAlarmClick);
+  el.alarmMuteBtn.addEventListener("click", () => {
+    alarmMuted = true;
+    stopSound();
+    el.alarmMuteBtn.classList.add("hidden");
+  });
+  el.alarmDialog.addEventListener("close", stopSound);
+  setInterval(checkReminders, 15_000);
+
+  // Pasang aplikasi
+  el.installBtn.addEventListener("click", installApp);
+  el.setInstallBtn.addEventListener("click", () => {
+    el.settingsDialog.close();
+    installApp();
+  });
+  el.installLater.addEventListener("click", () => {
+    prefs.installDismissed = Date.now();
+    savePrefs();
+    updateInstallUi();
+  });
 
   el.nav.forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
   el.tagList.addEventListener("click", (e) => {
@@ -1551,7 +2473,9 @@
   el.formatBar.addEventListener("mousedown", (e) => e.preventDefault()); // jangan hilangkan seleksi teks
   el.formatBar.addEventListener("click", (e) => {
     const b = e.target.closest("[data-fmt]");
-    if (b) applyFormat(b.dataset.fmt);
+    if (!b) return;
+    if (b.dataset.fmt === "mic") return voice.active ? stopDictation() : startDictation();
+    applyFormat(b.dataset.fmt);
   });
   el.contentInput.addEventListener("keydown", (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
@@ -1692,6 +2616,7 @@
   });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && state.user && Date.now() - lastFetchAt > 30_000) refreshFromServer();
+    if (document.visibilityState === "visible") checkReminders();
   });
 
   document.addEventListener("keydown", (e) => {
@@ -1839,9 +2764,16 @@
     inflight.clear();
     pendingDeletes.clear();
     signedUrls.clear();
+    stopDictation();
+    folders = [];
+    foldersDirty = false;
+    foldersAt = 0;
+    ringing.clear();
+    renderAlarm();
     document.querySelectorAll("dialog[open]").forEach((d) => d.close());
     notes = [];
     Object.assign(state, { view: "all", activeId: null, query: "", mode: "edit", user: null });
+    updateInstallUi();
     el.searchInput.value = "";
   }
 
@@ -1857,6 +2789,7 @@
   function showApp() {
     document.body.classList.remove("booting");
     document.body.classList.add("authed");
+    updateInstallUi();
     if (!state.activeId) {
       const first = visibleNotes()[0];
       state.activeId = first && window.innerWidth > 760 ? first.id : null;
@@ -1877,6 +2810,9 @@
       (cache.dirty || []).forEach((id) => dirty.add(id));
       (cache.deletes || []).forEach((id) => pendingDeletes.add(id));
       Object.assign(state.features, cache.features || {});
+      folders = cleanFolders(cache.folders);
+      foldersDirty = !!cache.foldersDirty;
+      foldersAt = Number(cache.foldersAt) || 0;
       showApp();
       setStatus(dirty.size || pendingDeletes.size ? "saving" : "saved");
     }
@@ -1891,11 +2827,13 @@
       }
       await detectFeatures();
       const server = await fetchNotes();
+      const serverFolders = await fetchFolders();
       if (state.user !== user) return; // keluar saat sedang memuat
       lastFetchAt = Date.now();
       state.offline = false;
       if (cache) mergeServer(server);
       else notes = server;
+      mergeFolders(serverFolders);
     } catch (err) {
       if (state.user !== user) return;
       if (cache && isNetworkError(err)) {
@@ -1917,10 +2855,11 @@
 
     showApp();
     saveCache(true);
-    if (dirty.size || pendingDeletes.size) persist(null, true);
+    if (dirty.size || pendingDeletes.size || foldersDirty) persist(null, true);
     else setStatus("saved");
     purgeOldTrash();
     subscribeRealtime();
+    checkReminders();
     if (migrated) toast(`${migrated} catatan lokal dipindahkan ke akunmu`);
   }
 

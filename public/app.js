@@ -132,6 +132,12 @@
     installLater: $("#installLater"),
     installSection: $("#installSection"),
     setInstallBtn: $("#setInstallBtn"),
+    newsBar: $("#newsBar"),
+    newsSource: $("#newsSource"),
+    newsStatus: $("#newsStatus"),
+    newsRefresh: $("#newsRefresh"),
+    fabMic: $("#fabMic"),
+    emptyRecBtn: $("#emptyRecBtn"),
   };
 
   // ---------- Tanggal & folder (fungsi kecil, dipakai di banyak tempat) ----------
@@ -670,6 +676,7 @@
       if (state.view === "trash") return n.trashed;
       if (n.trashed) return false;
       if (state.view === "pinned") return n.pinned;
+      if (state.view === "news") return false;
       if (state.view === "reminders") return !!n.remindAt;
       if (state.view === "calendar") return noteOnDay(n, state.calDay);
       if (folderIds) return !!n.folderId && folderIds.has(n.folderId);
@@ -745,7 +752,7 @@
     }
     if (v === "calendar")
       return parseYmd(state.calDay).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
-    return { all: "Semua catatan", pinned: "Disematkan", trash: "Sampah", reminders: "Pengingat & alarm" }[v] || "Catatan";
+    return { all: "Semua catatan", pinned: "Disematkan", trash: "Sampah", reminders: "Pengingat & alarm", news: "Berita terkini" }[v] || "Catatan";
   }
 
   function emptyMessage(q) {
@@ -766,8 +773,11 @@
     const list = visibleNotes();
     const q = state.query.trim();
     el.listTitle.textContent = viewTitle();
+    document.body.classList.toggle("view-news", state.view === "news");
 
-    if (!list.length) {
+    if (state.view === "news") {
+      el.noteList.innerHTML = newsHtml(q);
+    } else if (!list.length) {
       el.noteList.innerHTML = `<div class="list-empty">${emptyMessage(q)}</div>`;
     } else if (state.view === "all" && !q) {
       const pinned = list.filter((n) => n.pinned);
@@ -813,6 +823,7 @@
     renderFolders(live);
     renderCalendar();
     renderRemindBar();
+    renderNewsBar();
   }
 
   function renderTags() {
@@ -1167,7 +1178,7 @@
       createdAt, updatedAt: now, folderId: inFolder ? inFolder.id : null, remindAt: null,
     };
     notes.unshift(n);
-    if (state.view === "trash" || state.view === "reminders") state.view = "all";
+    if (state.view === "trash" || state.view === "reminders" || state.view === "news") state.view = "all";
     state.query = "";
     el.searchInput.value = "";
     state.activeId = n.id;
@@ -1277,6 +1288,7 @@
 
   function setView(view) {
     state.view = view;
+    if (view === "news") loadNews();
     const list = visibleNotes();
     if (!list.some((n) => n.id === state.activeId)) state.activeId = window.innerWidth > 760 && list[0] ? list[0].id : null;
     render();
@@ -1797,6 +1809,109 @@
     resolveImages(el.sharedContent);
   }
 
+  // ---------- Berita terkini ----------
+  // Berita diambil oleh fungsi server kecil (api/news.py) dari RSS publik media Indonesia, karena
+  // browser tidak boleh mengambil RSS situs lain langsung (CORS). Yang dikirim ke server hanya nama sumber.
+  const NEWS_SOURCES = { all: "Semua sumber", antara: "Antara", cnn: "CNN Indonesia", bbc: "BBC Indonesia", cnbc: "CNBC Indonesia", republika: "Republika" };
+  const news = { items: [], source: NEWS_SOURCES[prefs.newsSource] ? prefs.newsSource : "all", key: "", loadedAt: 0, loading: false, error: "", failed: [] };
+
+  async function loadNews(force = false) {
+    if (news.loading) return;
+    const fresh = news.items.length && news.key === news.source && Date.now() - news.loadedAt < 10 * 60_000;
+    if (fresh && !force) return;
+    const wanted = news.source;
+    news.loading = true;
+    news.error = "";
+    renderList();
+    try {
+      const res = await fetch(`${location.origin}/api/news?source=${encodeURIComponent(wanted)}`, { headers: { Accept: "application/json" } });
+      if (res.status === 404) throw new Error("local");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Gagal memuat berita.");
+      const ok = (u, re) => typeof u === "string" && re.test(u);
+      news.items = (Array.isArray(data.items) ? data.items : [])
+        .filter((it) => it && typeof it.title === "string" && ok(it.link, /^https?:\/\//i))
+        .map((it) => ({
+          title: String(it.title).slice(0, 200),
+          link: it.link,
+          source: String(it.source || "").slice(0, 40),
+          summary: String(it.summary || "").slice(0, 300),
+          image: ok(it.image, /^https:\/\//i) ? it.image : "",
+          published: Number(it.published) || 0,
+        }));
+      news.failed = Array.isArray(data.failed) ? data.failed.map(String) : [];
+      news.key = wanted;
+      news.loadedAt = Date.now();
+    } catch (err) {
+      news.error = !navigator.onLine
+        ? "Kamu sedang offline. Berita butuh internet."
+        : err.message === "local"
+        ? "Berita hanya tersedia di situs yang sudah di-deploy, bukan di server lokal biasa."
+        : err.message || "Gagal memuat berita.";
+    } finally {
+      news.loading = false;
+      if (state.view === "news") renderList();
+    }
+  }
+
+  function newsHtml(q) {
+    if (news.loading && !news.items.length) return '<div class="list-empty">Memuat berita…</div>';
+    if (news.error && (!news.items.length || news.key !== news.source))
+      return `<div class="list-empty">${escapeHtml(news.error)}<br><button class="link-btn" data-news="retry">Coba lagi</button></div>`;
+    const needle = q.toLowerCase();
+    const cards = [];
+    news.items.forEach((it, i) => {
+      if (needle && !`${it.title} ${it.summary} ${it.source}`.toLowerCase().includes(needle)) return;
+      cards.push(`<article class="news-card">
+        <a class="news-main" href="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">
+          ${it.image ? `<img src="${escapeHtml(it.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : ""}
+          <span class="news-text"><h4>${highlight(it.title, q)}</h4>${it.summary ? `<p>${highlight(it.summary, q)}</p>` : ""}
+          <span class="meta"><b>${escapeHtml(it.source)}</b>${it.published ? `<span>${relativeTime(it.published)}</span>` : ""}</span></span>
+        </a>
+        <button class="icon-btn" data-save-news="${i}" title="Simpan ke catatan" aria-label="Simpan ke catatan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M12 11v6M9 14h6"/></svg></button>
+      </article>`);
+    });
+    if (!cards.length) return `<div class="list-empty">${q ? `Tidak ada berita yang cocok dengan “${escapeHtml(q)}”.` : "Belum ada berita."}</div>`;
+    return cards.join("") + '<div class="news-note">Berita dari RSS publik; klik judul untuk membaca di situs aslinya.</div>';
+  }
+
+  function renderNewsBar() {
+    const show = state.view === "news";
+    el.newsBar.classList.toggle("hidden", !show);
+    if (!show) return;
+    if (!el.newsSource.options.length)
+      el.newsSource.innerHTML = Object.entries(NEWS_SOURCES).map(([id, name]) => `<option value="${id}">${name}</option>`).join("");
+    el.newsSource.value = news.source;
+    el.newsRefresh.classList.toggle("spin", news.loading);
+    el.newsStatus.textContent = news.loading
+      ? "Memuat…"
+      : news.error && news.items.length
+      ? "Gagal memperbarui. Menampilkan berita sebelumnya."
+      : news.loadedAt
+      ? `Diperbarui ${relativeTime(news.loadedAt)}` + (news.failed.length ? ` · ${news.failed.length} sumber gagal` : "")
+      : "";
+  }
+
+  function saveNewsItem(i) {
+    const it = news.items[i];
+    if (!it) return;
+    const now = Date.now();
+    const url = it.link.replace(/\(/g, "%28").replace(/\)/g, "%29");
+    const n = {
+      id: uid(), title: it.title.slice(0, 140),
+      content: `${it.summary ? it.summary + "\n\n" : ""}[Baca selengkapnya di ${it.source}](${url})`,
+      tags: ["berita"], color: "", pinned: false, trashed: false, createdAt: now, updatedAt: now, folderId: null, remindAt: null,
+    };
+    notes.unshift(n);
+    persist(n);
+    renderList();
+    toast("Disimpan ke catatan", "Buka", () => {
+      state.view = "all";
+      state.activeId = n.id;
+      render();
+    });
+  }
+
   // ---------- Pengingat & alarm ----------
   // Pengingat disimpan di database (kolom remind_at) dan berbunyi selama aplikasi terbuka di browser.
   // Tidak ada server push: bila aplikasi tertutup, alarm berbunyi saat dibuka lagi.
@@ -2029,6 +2144,8 @@
     el.contentInput.classList.toggle("dictating", on);
     const mic = el.formatBar.querySelector('[data-fmt="mic"]');
     if (mic) mic.classList.toggle("rec-on", on);
+    el.fabMic.classList.toggle("rec-on", on);
+    el.fabMic.title = on ? "Berhenti merekam" : "Rekam suara jadi catatan";
     if (on) el.recText.textContent = "Mendengarkan… bicaralah";
   }
 
@@ -2194,7 +2311,28 @@
   el.emptyNewBtn.addEventListener("click", () => createNote());
   el.recNoteBtn.addEventListener("click", recordNewNote);
   el.recStopBtn.addEventListener("click", stopDictation);
+  el.fabMic.addEventListener("click", recordNewNote);
+  el.emptyRecBtn.addEventListener("click", recordNewNote);
+
+  // Berita
+  el.newsSource.addEventListener("change", () => {
+    news.source = el.newsSource.value;
+    prefs.newsSource = news.source;
+    savePrefs();
+    news.items = [];
+    news.error = "";
+    loadNews(true);
+  });
+  el.newsRefresh.addEventListener("click", () => loadNews(true));
+  el.noteList.addEventListener("click", (e) => {
+    const save = e.target.closest("[data-save-news]");
+    if (save) return saveNewsItem(Number(save.dataset.saveNews));
+    if (e.target.closest('[data-news="retry"]')) loadNews(true);
+  });
+  el.noteList.addEventListener("error", (e) => e.target.tagName === "IMG" && e.target.remove(), true); // gambar berita gagal dimuat
   if (SpeechRec) {
+    el.fabMic.classList.remove("hidden");
+    el.emptyRecBtn.classList.remove("hidden");
     el.recNoteBtn.classList.remove("hidden");
     el.formatBar.querySelector('[data-fmt="mic"]').classList.remove("hidden");
   }

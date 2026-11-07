@@ -20,6 +20,8 @@ tanpa build step dan tanpa server sendiri.
 - **Kalender harian**: lihat catatan per tanggal, titik penanda hari yang berisi catatan atau pengingat, dan buat catatan untuk tanggal tertentu
 - **Pengingat & alarm**: atur waktu per catatan (ikon lonceng); alarm berbunyi + notifikasi browser, bisa ditunda 10 menit
 - **Rekam suara**: tombol *Rekam* membuat catatan dari ucapan (bahasa Indonesia); tombol mikrofon di toolbar menyisipkan dikte ke catatan yang sedang dibuka
+- **Berita terkini**: headline dari RSS publik (Antara, CNN Indonesia, BBC Indonesia, CNBC Indonesia, Republika), bisa dicari dan disimpan ke catatan (tag `berita`)
+- Tombol **mikrofon melayang** dan tombol *Input Suara* di layar sambutan untuk merekam dari mana saja
 - Ajakan **Instal aplikasi** (PWA) di Chrome/Edge/Android, dan petunjuk untuk iPhone/iPad
 - Akun: **masuk dengan Google** (pengguna baru), masuk dengan email + kata sandi untuk akun lama, lupa sandi, ganti sandi/email, hapus akun
 
@@ -39,6 +41,8 @@ catatan/
 │   ├── sw.js            # service worker (offline / PWA)
 │   ├── manifest.webmanifest
 │   └── icons/
+├── api/
+│   └── news.py          # Vercel Function (Python): mengambil RSS berita untuk menu Berita terkini
 ├── supabase/
 │   ├── schema.sql                     # tabel notes + kebijakan RLS
 │   ├── migrations/002_fitur_baru.sql  # gambar, berbagi, riwayat, realtime, hapus akun
@@ -178,6 +182,15 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
 - **Rekam suara** memakai Web Speech API bawaan browser (Chrome, Edge, Safari; Firefox belum mendukung, tombolnya disembunyikan).
   Di Chrome/Edge audio diproses oleh layanan pengenalan suara milik penyedia browser, bukan oleh Catatan, dan Catatan tidak menyimpan audionya.
   Header `Permissions-Policy` di `vercel.json` mengizinkan mikrofon hanya untuk situs ini.
+
+### Berita terkini
+
+Browser tidak boleh mengambil RSS situs lain langsung (CORS), jadi [`api/news.py`](api/news.py) berjalan sebagai Vercel Function:
+mengambil RSS dari daftar tetap `FEEDS` di dalam berkas itu, merapikannya, lalu mengembalikan JSON (di-cache 10 menit di edge Vercel).
+Alamat yang diambil tidak pernah berasal dari pengguna (anti-SSRF), tautan/gambar hanya http(s), dan XML ber-DOCTYPE ditolak.
+Untuk menambah sumber, tambahkan satu baris di `FEEDS` dan satu entri di `NEWS_SOURCES` pada `public/app.js`.
+Menu ini hanya jalan di hosting Vercel; di server statis lokal biasa muncul pesan bahwa berita belum tersedia
+(gunakan `vercel dev` untuk mencobanya secara lokal). Sebagian media bisa memblokir permintaan dari server; sumber yang gagal dilewati.
 
 ## Fitur akun
 

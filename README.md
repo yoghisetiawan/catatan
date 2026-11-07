@@ -16,7 +16,7 @@ tanpa build step dan tanpa server sendiri.
 - Sampah dengan hapus otomatis setelah 30 hari + tombol kosongkan sampah
 - **Ekspor ke Word (.docx), PDF, Excel (.xlsx), PowerPoint (.pptx)** dan Markdown; atau cetak. Ekspor semua catatan ke Excel/JSON dari Pengaturan
 - **Tabel Markdown** (tombol tabel di toolbar); di Excel, tiap tabel jadi lembar sendiri
-- Akun: daftar/masuk email, **login Google/GitHub**, lupa sandi, ganti sandi/email, hapus akun
+- Akun: **masuk dengan Google** (pengguna baru), masuk dengan email + kata sandi untuk akun lama, lupa sandi, ganti sandi/email, hapus akun
 
 ## Struktur
 
@@ -150,6 +150,14 @@ Tombolnya muncul otomatis di halaman masuk begitu provider-nya diaktifkan di Sup
    *Homepage URL*: `https://catatan-wt5e.vercel.app/` ·
    *Authorization callback URL*: `https://tgztswbgnhevyxaxbawz.supabase.co/auth/v1/callback`
 2. Buat *client secret*, lalu salin *Client ID* + *secret* ke Supabase **Authentication → Sign In / Providers → GitHub**.
+
+### Mode "Google saja"
+
+Selama Google aktif di Supabase, halaman masuk hanya menampilkan tombol **Lanjutkan dengan Google**. Form email (khusus *masuk*)
+tersembunyi di balik tautan "Sudah punya akun dengan email? Masuk di sini" agar akun email yang sudah ada tidak terkunci, dan
+tab *Daftar* tidak ditampilkan. Bila Google dinonaktifkan, tampilan lama (email + daftar) kembali otomatis. Ini hanya mengatur
+tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak ada tombol untuk menutup pendaftaran email saja
+(mematikan provider Email juga mematikan login email lama).
 
 ## Fitur akun
 

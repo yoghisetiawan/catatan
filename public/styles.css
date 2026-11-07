@@ -401,6 +401,12 @@ body.authed .auth { display: none; }
   transition: background .12s, border-color .12s;
 }
 .oauth-btn:hover { background: var(--hover); border-color: var(--faint); }
+/* Mode "Google saja": pengguna baru hanya melihat tombol Google; form email (khusus masuk) tersembunyi di balik tautan. */
+.email-toggle { display: none; width: 100%; margin-top: 14px; text-align: center; }
+.auth--google-only:not(.auth--email-open) .email-toggle { display: block; }
+.auth--google-only #authSeg { display: none; }
+.auth--google-only:not(.auth--email-open) #authForm,
+.auth--google-only:not(.auth--email-open) .oauth-box .divider { display: none; }
 .divider { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 12px; margin: 10px 0 14px; }
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 

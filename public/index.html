@@ -20,7 +20,7 @@
 </head>
 <body class="booting">
   <!-- Login / daftar -->
-  <div class="auth" id="auth">
+  <div class="auth auth--google-only" id="auth">
     <div class="auth-card">
       <div class="brand auth-brand">
         <div class="brand-logo">
@@ -43,6 +43,9 @@
         </button>
         <div class="divider"><span>atau dengan email</span></div>
       </div>
+      <button type="button" class="link-btn email-toggle" id="emailToggle">Sudah punya akun dengan email? Masuk di sini</button>
+      <div class="auth-error" id="authError" role="alert"></div>
+      <div class="auth-info" id="authInfo" role="status"></div>
 
       <div class="seg auth-seg" id="authSeg">
         <button type="button" data-auth="login" class="active">Masuk</button>
@@ -64,8 +67,6 @@
           </div>
           <small class="hint" id="pwHint">Minimal 8 karakter.</small>
         </label>
-        <div class="auth-error" id="authError" role="alert"></div>
-        <div class="auth-info" id="authInfo" role="status"></div>
         <button class="btn-primary auth-submit" id="authSubmit" type="submit">Masuk</button>
         <button type="button" class="link-btn back-link hidden" id="backToLoginBtn">← Kembali ke halaman masuk</button>
       </form>

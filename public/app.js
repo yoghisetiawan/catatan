@@ -50,6 +50,7 @@
     emailField: $("#emailField"),
     pwField: $("#pwField"),
     forgotBtn: $("#forgotBtn"),
+    emailToggle: $("#emailToggle"),
     backToLoginBtn: $("#backToLoginBtn"),
     authSubmit: $("#authSubmit"),
     pwToggle: $("#pwToggle"),
@@ -109,6 +110,7 @@
   const state = {
     view: "all", activeId: null, query: "", mode: "edit",
     user: null, session: null, authMode: "login", recovering: false,
+    emailOpen: false, // form email dibuka lewat tautan (mode Google saja)
     features: { v2: false }, // v2 = migrasi 002 sudah dijalankan (gambar, berbagi, riwayat, dll.)
     offline: !navigator.onLine,
     oauthAvailable: false,
@@ -1311,6 +1313,8 @@
         any = any || on;
       });
       state.oauthAvailable = any;
+      // Google aktif → pengguna baru masuk lewat Google saja; bila tidak, tampilan email + daftar yang lama dipakai.
+      el.auth.classList.toggle("auth--google-only", !!ext.google);
       setAuthMode(state.authMode, true); // jangan hapus pesan galat yang sedang tampil
     } catch {
       /* offline: tombol tetap tersembunyi */
@@ -1766,8 +1770,11 @@
     const t = AUTH_TEXT[mode];
     el.authSeg.classList.toggle("hidden", mode === "reset" || mode === "newpass");
     el.authSeg.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.auth === mode));
+    const googleOnly = el.auth.classList.contains("auth--google-only");
+    el.auth.classList.toggle("auth--email-open", state.emailOpen || mode === "reset" || mode === "newpass");
     el.authTitle.textContent = t.title;
-    el.authSub.textContent = t.sub;
+    el.authSub.textContent =
+      mode === "login" && googleOnly && !state.emailOpen ? "Masuk dengan Google untuk membuka catatanmu di perangkat mana pun." : t.sub;
     el.authSubmit.textContent = t.submit;
     el.emailField.classList.toggle("hidden", mode === "newpass");
     el.pwField.classList.toggle("hidden", mode === "reset");
@@ -1959,6 +1966,11 @@
     if (b) setAuthMode(b.dataset.auth);
   });
   el.forgotBtn.addEventListener("click", () => setAuthMode("reset"));
+  el.emailToggle.addEventListener("click", () => {
+    state.emailOpen = true;
+    setAuthMode("login", true);
+    el.authEmail.focus();
+  });
   el.backToLoginBtn.addEventListener("click", () => setAuthMode("login"));
 
   el.pwToggle.addEventListener("click", () => {

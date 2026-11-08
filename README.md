@@ -18,7 +18,7 @@ tanpa build step dan tanpa server sendiri.
 - **Tabel Markdown** (tombol tabel di toolbar); di Excel, tiap tabel jadi lembar sendiri
 - **Folder bertingkat** (sampai 5 tingkat) di sidebar; pindahkan catatan lewat pilihan folder di editor
 - **Kalender harian**: lihat catatan per tanggal, titik penanda hari yang berisi catatan atau pengingat, dan buat catatan untuk tanggal tertentu
-- **Pengingat & alarm**: atur waktu per catatan (ikon lonceng); alarm berbunyi + notifikasi browser, bisa ditunda 10 menit
+- **Pengingat & alarm**: halaman penuh dengan tab **Pengingat Umum**, **Jobdesk Karyawan** (tugas untuk seorang kontak, bisa berulang harian/mingguan), dan **Daftar Kontak**. Tiap pengingat bisa memberi alarm H-1 hari, H-60 menit, dan tepat waktu, plus tombol WhatsApp siap kirim. Pengingat per catatan (ikon lonceng di editor) tetap ada dan ikut tampil di halaman ini
 - **Rekam suara**: tombol *Rekam* membuat catatan dari ucapan (bahasa Indonesia); tombol mikrofon di toolbar menyisipkan dikte ke catatan yang sedang dibuka
 - **Berita terkini**: headline dari RSS publik (Antara, CNN Indonesia, BBC Indonesia, CNBC Indonesia, Republika), bisa dicari dan disimpan ke catatan (tag `berita`)
 - Tombol **mikrofon melayang** dan tombol *Input Suara* di layar sambutan untuk merekam dari mana saja
@@ -41,6 +41,7 @@ catatan/
 │   ├── export.js        # ekspor Word / PDF / Excel / PowerPoint
 │   ├── social.js        # Chat room, Pesan grup, Pesan darurat
 │   ├── booking.js       # Reservasi meja
+│   ├── reminders.js     # halaman Pengingat & Alarm (umum, jobdesk, kontak)
 │   ├── privasi.html     # Kebijakan Privasi (ditautkan dari form login)
 │   ├── ketentuan.html   # Ketentuan Layanan
 │   ├── sw.js            # service worker (offline / PWA)
@@ -53,6 +54,7 @@ catatan/
 │   ├── migrations/002_fitur_baru.sql  # gambar, berbagi, riwayat, realtime, hapus akun
 │   ├── migrations/003_folder_pengingat.sql  # folder bertingkat + pengingat
 │   ├── migrations/004_chat_darurat_reservasi.sql  # chat, grup, darurat, reservasi meja
+│   ├── migrations/005_pengingat_kontak.sql  # pengingat umum, jobdesk, kontak
 │   └── email-templates/               # template email berbahasa Indonesia (tempel manual di Supabase)
 └── vercel.json          # konfigurasi hosting Vercel
 ```
@@ -68,6 +70,8 @@ catatan/
    kalender, rekam suara, dan tombol instal tidak butuh migrasi.
    Terakhir [`supabase/migrations/004_chat_darurat_reservasi.sql`](supabase/migrations/004_chat_darurat_reservasi.sql)
    untuk **chat, grup, darurat, dan reservasi meja** (tanpa migrasi 004, menu-menu itu menampilkan petunjuk).
+   Lalu [`supabase/migrations/005_pengingat_kontak.sql`](supabase/migrations/005_pengingat_kontak.sql)
+   untuk **pengingat mandiri, jobdesk, dan kontak** (tanpa migrasi 005, halamannya menampilkan petunjuk).
 3. **Isi konfigurasi:** buka **Project Settings → API Keys**, salin *Project URL* dan kunci
    **anon / publishable** ke `public/config.js`:
    ```js
@@ -191,6 +195,16 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
   Di Chrome/Edge audio diproses oleh layanan pengenalan suara milik penyedia browser, bukan oleh Catatan, dan Catatan tidak menyimpan audionya.
   Header `Permissions-Policy` di `vercel.json` mengizinkan mikrofon hanya untuk situs ini.
 
+### Halaman Pengingat & Alarm
+
+- Data di tabel `reminders` dan `contacts` (hanya bisa diakses pemiliknya lewat RLS; batas 500 pengingat dan 200 kontak per pengguna).
+- Alarm dicek di browser tiap 15 detik, jadi berbunyi **selama Catatan terbuka**. Tiga tahap: H-1 hari dan H-60 menit hanya berbunyi bila aplikasi terbuka pada saat itu
+  (maksimal 15 menit setelahnya); tahap tepat waktu tetap berbunyi sampai 3 hari setelah jadwal, dengan label "Terlewat". Status "sudah berbunyi" disimpan per perangkat,
+  jadi dua perangkat yang sama-sama terbuka akan sama-sama berbunyi.
+- **WhatsApp tidak dikirim otomatis.** Pengiriman otomatis butuh layanan WhatsApp Business API berbayar dan server; di sini alarm menyediakan tombol yang membuka WhatsApp
+  (`wa.me`) dengan pesan siap kirim ke kontak yang dipilih.
+- Jobdesk berulang: "Selesai" memajukan jadwal ke periode berikutnya alih-alih menutupnya. Pengingat sekali jalan ditandai selesai.
+
 ### Chat, grup, pesan darurat
 
 - Pengguna memilih **nama tampilan** (2-30 karakter) saat pertama memakai chat; email dan akun Google tidak ditampilkan ke orang lain.
@@ -213,7 +227,7 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
 
 ### Pengujian SQL
 
-Aturan di migrasi 004 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
+Aturan di migrasi 004 dan 005 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
 akses lintas pengguna, kode undangan, batas laju, pesan darurat, bentrok jadwal, jam buka, batas reservasi, dan keamanan fungsi. Migrasi juga aman dijalankan dua kali.
 
 ### Berita terkini

@@ -109,9 +109,6 @@
     folderPick: $("#folderPick"),
     folderSelect: $("#folderSelect"),
     calendar: $("#calendar"),
-    remindBar: $("#remindBar"),
-    remindBarText: $("#remindBarText"),
-    notifyBtn: $("#notifyBtn"),
     remindBtn: $("#remindBtn"),
     remindDialog: $("#remindDialog"),
     remindNoteTitle: $("#remindNoteTitle"),
@@ -155,7 +152,8 @@
   };
 
   // Tampilan yang dikelola modul terpisah (social.js, booking.js): chat, grup, darurat, reservasi.
-  const MOD_VIEWS = { emergency: "Pesan darurat", groups: "Pesan grup", chat: "Chat room", booking: "Reservasi meja" };
+  const MOD_VIEWS = { reminders: "Pengingat & alarm", emergency: "Pesan darurat", groups: "Pesan grup", chat: "Chat room", booking: "Reservasi meja" };
+  let remExtra = 0; // jumlah pengingat mandiri aktif (dari reminders.js), ditambahkan ke lencana menu
   const isModView = () => Object.prototype.hasOwnProperty.call(MOD_VIEWS, state.view);
 
   // ---------- Tanggal & folder (fungsi kecil, dipakai di banyak tempat) ----------
@@ -697,7 +695,6 @@
       if (n.trashed) return false;
       if (state.view === "pinned") return n.pinned;
       if (state.view === "news" || isModView()) return false;
-      if (state.view === "reminders") return !!n.remindAt;
       if (state.view === "calendar") return noteOnDay(n, state.calDay);
       if (folderIds) return !!n.folderId && folderIds.has(n.folderId);
       if (state.view.startsWith("tag:")) return n.tags.includes(state.view.slice(4));
@@ -716,7 +713,6 @@
       created: (a, b) => b.createdAt - a.createdAt,
       title: (a, b) => (a.title || "").localeCompare(b.title || "", "id"),
     };
-    if (state.view === "reminders") return list.sort((a, b) => a.remindAt - b.remindAt);
     return list.sort(sorters[prefs.sort] || sorters.updated);
   }
 
@@ -821,10 +817,6 @@
     if (v === "trash") return "Sampah kosong.";
     if (v === "pinned") return "Belum ada catatan yang disematkan.";
     if (v === "calendar") return "Tidak ada catatan di tanggal ini.<br>Tekan <b>+ Catatan</b> di atas untuk membuatnya.";
-    if (v === "reminders")
-      return state.features.v3
-        ? "Belum ada pengingat.<br>Buka catatan lalu tekan ikon lonceng 🔔 di toolbar."
-        : "Fitur pengingat aktif setelah migrasi database 003 dijalankan (lihat README).";
     if (v.startsWith("folder:")) return "Folder ini masih kosong.<br>Pindahkan catatan ke sini lewat pilihan folder di editor.";
     return "Belum ada catatan.<br>Tekan <b>N</b> untuk membuat yang pertama.";
   }
@@ -835,6 +827,7 @@
     el.listTitle.textContent = viewTitle();
     document.body.classList.toggle("view-news", state.view === "news");
     document.body.classList.toggle("view-mod", isModView());
+    document.body.classList.toggle("view-page", state.view === "reminders"); // halaman penuh tanpa panel editor
 
     if (isModView()) {
       /* modul mengelola isi daftarnya sendiri */
@@ -849,19 +842,6 @@
       if (pinned.length) html += `<div class="group-label">Disematkan</div>` + pinned.map((n) => cardHtml(n, q)).join("");
       if (others.length) html += groupedCards(others, q);
       el.noteList.innerHTML = html;
-    } else if (state.view === "reminders") {
-      const now = Date.now();
-      const today = ymd(now);
-      const groupOf = (n) => (n.remindAt <= now ? "Terlambat" : ymd(n.remindAt) === today ? "Hari ini" : "Akan datang");
-      let last = "";
-      el.noteList.innerHTML = list
-        .map((n) => {
-          const g = groupOf(n);
-          const head = g !== last ? `<div class="group-label">${g}</div>` : "";
-          last = g;
-          return head + cardHtml(n, q);
-        })
-        .join("");
     } else {
       el.noteList.innerHTML = groupedCards(list, q);
     }
@@ -872,7 +852,7 @@
     document.querySelector('[data-count="all"]').textContent = live.length;
     document.querySelector('[data-count="pinned"]').textContent = live.filter((n) => n.pinned).length;
     document.querySelector('[data-count="trash"]').textContent = notes.length - live.length;
-    document.querySelector('[data-count="reminders"]').textContent = live.filter((n) => n.remindAt).length || "";
+    document.querySelector('[data-count="reminders"]').textContent = live.filter((n) => n.remindAt).length + remExtra || "";
 
     // bar sampah
     const trashCount = notes.length - live.length;
@@ -1125,18 +1105,10 @@
   }
 
   // ---------- Bar pengingat ----------
+  // Status izin notifikasi ditampilkan oleh halaman Pengingat (reminders.js); panggil ulang setelah izin berubah.
   function renderRemindBar() {
-    const show = state.view === "reminders" && state.features.v3;
-    el.remindBar.classList.toggle("hidden", !show);
-    if (!show) return;
-    const perm = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
-    el.remindBarText.textContent = {
-      unsupported: "Browser ini tidak mendukung notifikasi. Alarm tetap berbunyi di dalam aplikasi.",
-      granted: "Notifikasi aktif. Alarm berbunyi selama Catatan terbuka di browser.",
-      denied: "Notifikasi diblokir di browser. Alarm tetap berbunyi di dalam aplikasi.",
-      default: "Aktifkan notifikasi agar pengingat muncul walau tab tidak terlihat.",
-    }[perm];
-    el.notifyBtn.classList.toggle("hidden", perm !== "default");
+    const m = typeof modules !== "undefined" && modules.reminders;
+    if (m && m.refresh) m.refresh();
   }
 
   function renderEditor() {
@@ -1246,7 +1218,7 @@
       createdAt, updatedAt: now, folderId: inFolder ? inFolder.id : null, remindAt: null,
     };
     notes.unshift(n);
-    if (state.view === "trash" || state.view === "reminders" || state.view === "news") state.view = "all";
+    if (state.view === "trash" || state.view === "news") state.view = "all";
     state.query = "";
     el.searchInput.value = "";
     state.activeId = n.id;
@@ -2568,6 +2540,26 @@
     setMainOpen(open) { el.app.classList.toggle("editing", !!open); },
     sound: { start: () => startSound(true), stop: stopSound },
     notify: notifyRaw,
+    unlockAudio,
+    renderRemindBar,
+    setReminderExtra(n) {
+      remExtra = n || 0;
+      const e = document.querySelector('[data-count="reminders"]');
+      if (e) e.textContent = notes.filter((x) => !x.trashed && x.remindAt).length + remExtra || "";
+    },
+    // Pengingat yang dipasang pada catatan (ikon lonceng di editor).
+    noteReminders: () => notes.filter((n) => !n.trashed && n.remindAt).map((n) => ({ id: n.id, title: n.title, remindAt: n.remindAt })).sort((a, b) => a.remindAt - b.remindAt),
+    openNote(id) {
+      setView("all");
+      state.query = "";
+      el.searchInput.value = "";
+      selectNote(id);
+    },
+    clearNoteReminder(id) {
+      const n = notes.find((x) => x.id === id);
+      if (n) setRemind(n, null);
+    },
+    formatRemind,
   };
   const modsLogin = () => mods.forEach((m) => m.onLogin && m.onLogin(state.user, sb));
   const modsLogout = () => mods.forEach((m) => m.onLogout && m.onLogout());
@@ -2671,11 +2663,6 @@
       e.preventDefault();
       saveRemind();
     }
-  });
-  el.notifyBtn.addEventListener("click", () => {
-    if (typeof Notification === "undefined") return;
-    unlockAudio();
-    Notification.requestPermission().then(renderRemindBar).catch(() => {});
   });
   el.alarmList.addEventListener("click", onAlarmClick);
   el.alarmMuteBtn.addEventListener("click", () => {

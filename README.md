@@ -27,7 +27,7 @@ tanpa build step dan tanpa server sendiri.
 - **Pesan WhatsApp Cepat** (menu Pesan darurat): pilih kontak tersimpan atau ketik nomor, tulis pesan (ada templat darurat dan opsi tautan lokasi), lalu buka WhatsApp dengan pesan siap kirim. Kontak yang sama dipakai di halaman Pengingat
 - **Pesan grup**: pesan terjadwal ke grup WhatsApp (judul, nama grup, isi, jadwal sekali/harian/mingguan/bulanan, aktif/jeda, hitungan terkirim), tab **Kirim cepat**, dan tab **Impor chat** (ekspor chat WhatsApp `.txt` jadi satu catatan). Catatan tidak mengirim otomatis: saat jadwal tiba muncul alarm dan tombol yang membuka WhatsApp dengan pesan siap kirim
 - **Chat room** (tab *Ruang terbuka* dan *Grup privat* dengan kode undangan) dan **Pesan darurat** (pesan berprioritas ke grup: alarm + notifikasi di perangkat anggota, plus lokasi bila diizinkan), semuanya realtime
-- **Reservasi meja**: pemilik tempat membuat tempat, meja, dan jam buka lalu membagikan tautan pemesanan; pelanggan memilih tanggal, jam, dan meja; bentrok dicegah di database
+- **Reservasi meja**: pemilik tempat membuat tempat, meja, dan jam buka lalu membagikan tautan pemesanan; pelanggan memilih tanggal, jam, dan meja (plus daftar menu); bentrok dicegah di database. Halaman **Manajemen Reservasi Meja Pelanggan** untuk pemilik: kalender dengan lencana jumlah reservasi per hari, filter status (Semua, Menunggu, Dikonfirmasi, Dibatalkan, Selesai), tabel dengan checklist admin (konfirmasi, DP diterima, catatan jam), nominal DP, dan reservasi manual untuk pesanan lewat telepon
 - Tombol **Salin**, **Pindahkan ke folder**, **mode fokus**, **Gabung catatan** (gambar ikut disalin), daftar dikelompokkan per waktu, ikon catatan suara
 - Ajakan **Instal aplikasi** (PWA) di Chrome/Edge/Android, dan petunjuk untuk iPhone/iPad
 - Akun: **masuk dengan Google** (pengguna baru), masuk dengan email + kata sandi untuk akun lama, lupa sandi, ganti sandi/email, hapus akun
@@ -62,6 +62,7 @@ catatan/
 │   ├── migrations/005_pengingat_kontak.sql  # pengingat umum, jobdesk, kontak
 │   ├── migrations/006_chat_atribut_gambar.sql  # atribut pesan + gambar di chat
 │   ├── migrations/007_pesan_terjadwal.sql  # pesan terjadwal ke grup WhatsApp
+│   ├── migrations/008_reservasi_admin.sql  # menu, DP, catatan admin pada reservasi
 │   └── email-templates/               # template email berbahasa Indonesia (tempel manual di Supabase)
 └── vercel.json          # konfigurasi hosting Vercel
 ```
@@ -83,6 +84,8 @@ catatan/
    untuk **atribut pesan dan gambar di chat** (tanpa migrasi 006, chat tetap berfungsi tanpa atribut dan gambar).
    Lalu [`supabase/migrations/007_pesan_terjadwal.sql`](supabase/migrations/007_pesan_terjadwal.sql)
    untuk **pesan terjadwal ke grup WhatsApp** (tanpa migrasi 007, tab Kirim cepat dan Impor chat tetap bisa dipakai).
+   Terakhir [`supabase/migrations/008_reservasi_admin.sql`](supabase/migrations/008_reservasi_admin.sql)
+   untuk **DP, daftar menu, dan catatan admin** pada reservasi (tanpa migrasi 008, tabel manajemen tetap jalan tanpa DP dan catatan).
 3. **Isi konfigurasi:** buka **Project Settings → API Keys**, salin *Project URL* dan kunci
    **anon / publishable** ke `public/config.js`:
    ```js
@@ -256,11 +259,13 @@ Pengiriman dilakukan di aplikasi WhatsApp milikmu lewat tautan `wa.me`; Catatan 
 - Pelanggan membuka tautan, masuk dengan Google, memilih tanggal, jumlah tamu, jam, dan meja. Database (`book_table`) menolak jam di luar jam buka, waktu lampau atau lebih dari 60 hari,
   melebihi kapasitas, bentrok dengan reservasi lain (dengan kunci baris agar dua pemesan tidak lolos bersamaan), dan lebih dari 5 reservasi aktif per pengguna.
 - Pemilik melihat nama dan telepon pemesan serta bisa mengonfirmasi, menyelesaikan, atau membatalkan. Pemesan hanya melihat reservasinya sendiri; ketersediaan yang dilihat publik tidak memuat data pribadi.
+- **Data admin (DP, DP diterima, catatan jam) disimpan di tabel terpisah `reservation_admin`** yang hanya bisa dibaca dan ditulis pemilik tempat; pemesan tidak bisa melihatnya. Daftar menu ditulis pemesan saat memesan.
+  Saklar *Dikonfirmasi* mengubah status antara Menunggu dan Dikonfirmasi; reservasi yang sudah Dibatalkan atau Selesai terkunci.
 - Meja yang punya riwayat reservasi tidak bisa dihapus (nonaktifkan saja). Menghapus tempat menghapus meja dan reservasinya.
 
 ### Pengujian SQL
 
-Aturan di migrasi 004, 005, 006, dan 007 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
+Aturan di migrasi 004, 005, 006, 007, dan 008 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
 akses lintas pengguna, kode undangan, batas laju, pesan darurat, bentrok jadwal, jam buka, batas reservasi, dan keamanan fungsi. Migrasi juga aman dijalankan dua kali.
 
 ### Berita terkini

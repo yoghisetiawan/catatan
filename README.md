@@ -22,6 +22,9 @@ tanpa build step dan tanpa server sendiri.
 - **Rekam suara**: tombol *Rekam* membuat catatan dari ucapan (bahasa Indonesia); tombol mikrofon di toolbar menyisipkan dikte ke catatan yang sedang dibuka
 - **Berita terkini**: headline dari RSS publik (Antara, CNN Indonesia, BBC Indonesia, CNBC Indonesia, Republika), bisa dicari dan disimpan ke catatan (tag `berita`)
 - Tombol **mikrofon melayang** dan tombol *Input Suara* di layar sambutan untuk merekam dari mana saja
+- **Chat room** (ruang terbuka), **Pesan grup** (privat, masuk dengan kode undangan), dan **Pesan darurat** (pesan berprioritas ke grup: alarm + notifikasi di perangkat anggota, plus lokasi bila diizinkan), semuanya realtime
+- **Reservasi meja**: pemilik tempat membuat tempat, meja, dan jam buka lalu membagikan tautan pemesanan; pelanggan memilih tanggal, jam, dan meja; bentrok dicegah di database
+- Tombol **Salin**, **Pindahkan ke folder**, **mode fokus**, **Gabung catatan** (gambar ikut disalin), daftar dikelompokkan per waktu, ikon catatan suara
 - Ajakan **Instal aplikasi** (PWA) di Chrome/Edge/Android, dan petunjuk untuk iPhone/iPad
 - Akun: **masuk dengan Google** (pengguna baru), masuk dengan email + kata sandi untuk akun lama, lupa sandi, ganti sandi/email, hapus akun
 
@@ -36,6 +39,8 @@ catatan/
 │   └── config.js        # URL + kunci anon Supabase (isi sendiri)
 │   ├── markdown.js      # parser Markdown bersama (pratinjau + ekspor)
 │   ├── export.js        # ekspor Word / PDF / Excel / PowerPoint
+│   ├── social.js        # Chat room, Pesan grup, Pesan darurat
+│   ├── booking.js       # Reservasi meja
 │   ├── privasi.html     # Kebijakan Privasi (ditautkan dari form login)
 │   ├── ketentuan.html   # Ketentuan Layanan
 │   ├── sw.js            # service worker (offline / PWA)
@@ -47,6 +52,7 @@ catatan/
 │   ├── schema.sql                     # tabel notes + kebijakan RLS
 │   ├── migrations/002_fitur_baru.sql  # gambar, berbagi, riwayat, realtime, hapus akun
 │   ├── migrations/003_folder_pengingat.sql  # folder bertingkat + pengingat
+│   ├── migrations/004_chat_darurat_reservasi.sql  # chat, grup, darurat, reservasi meja
 │   └── email-templates/               # template email berbahasa Indonesia (tempel manual di Supabase)
 └── vercel.json          # konfigurasi hosting Vercel
 ```
@@ -60,6 +66,8 @@ catatan/
    Terakhir jalankan [`supabase/migrations/003_folder_pengingat.sql`](supabase/migrations/003_folder_pengingat.sql)
    untuk **folder** dan **pengingat**. Tanpa migrasi 003, dua fitur itu tampil sebagai petunjuk saja;
    kalender, rekam suara, dan tombol instal tidak butuh migrasi.
+   Terakhir [`supabase/migrations/004_chat_darurat_reservasi.sql`](supabase/migrations/004_chat_darurat_reservasi.sql)
+   untuk **chat, grup, darurat, dan reservasi meja** (tanpa migrasi 004, menu-menu itu menampilkan petunjuk).
 3. **Isi konfigurasi:** buka **Project Settings → API Keys**, salin *Project URL* dan kunci
    **anon / publishable** ke `public/config.js`:
    ```js
@@ -182,6 +190,31 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
 - **Rekam suara** memakai Web Speech API bawaan browser (Chrome, Edge, Safari; Firefox belum mendukung, tombolnya disembunyikan).
   Di Chrome/Edge audio diproses oleh layanan pengenalan suara milik penyedia browser, bukan oleh Catatan, dan Catatan tidak menyimpan audionya.
   Header `Permissions-Policy` di `vercel.json` mengizinkan mikrofon hanya untuk situs ini.
+
+### Chat, grup, pesan darurat
+
+- Pengguna memilih **nama tampilan** (2-30 karakter) saat pertama memakai chat; email dan akun Google tidak ditampilkan ke orang lain.
+- **Chat room** terlihat oleh semua pengguna yang login dan bisa dimasuki siapa saja. **Pesan grup** privat: hanya yang punya kode undangan 8 karakter (maks. 50 anggota).
+  Pemilik bisa menghapus pesan siapa pun di ruangnya dan menghapus ruang (dengan keluar sebagai pemilik).
+- Semua penulisan data lewat fungsi database (`send_chat_message`, `join_chat_group`, dst.) yang memeriksa keanggotaan, panjang pesan, dan batas laju
+  (maks. 20 pesan per 30 detik, 10 pesan darurat per 10 menit). Tabel hanya bisa dibaca langsung, dan dibatasi RLS ke ruang yang diikuti.
+- **Pesan darurat** hanya untuk grup. Penerima yang sedang membuka Catatan mendengar alarm dan melihat lokasi (tautan OpenStreetMap) bila pengirim mengizinkan lokasi.
+  Ini **bukan layanan darurat resmi**: tidak ada pengiriman SMS/telepon dan tidak ada notifikasi saat aplikasi tertutup. Untuk keadaan darurat sungguhan hubungi 112.
+- Pesan **tidak dienkripsi ujung ke ujung**: administrator proyek Supabase secara teknis dapat membacanya. Hapus pesan lewat tombol "hapus" hanya terlihat di perangkat lain setelah memuat ulang
+  (peristiwa DELETE sengaja tidak dilanggan, karena tidak bisa disaring per pengguna).
+
+### Reservasi meja
+
+- Pemilik membuat **tempat** (jam buka, lama per reservasi, zona waktu WIB/WITA/WIT, konfirmasi otomatis atau manual), menambah **meja** berikut kapasitasnya, lalu membagikan **tautan pemesanan** (`?reservasi=<id tempat>`).
+- Pelanggan membuka tautan, masuk dengan Google, memilih tanggal, jumlah tamu, jam, dan meja. Database (`book_table`) menolak jam di luar jam buka, waktu lampau atau lebih dari 60 hari,
+  melebihi kapasitas, bentrok dengan reservasi lain (dengan kunci baris agar dua pemesan tidak lolos bersamaan), dan lebih dari 5 reservasi aktif per pengguna.
+- Pemilik melihat nama dan telepon pemesan serta bisa mengonfirmasi, menyelesaikan, atau membatalkan. Pemesan hanya melihat reservasinya sendiri; ketersediaan yang dilihat publik tidak memuat data pribadi.
+- Meja yang punya riwayat reservasi tidak bisa dihapus (nonaktifkan saja). Menghapus tempat menghapus meja dan reservasinya.
+
+### Pengujian SQL
+
+Aturan di migrasi 004 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
+akses lintas pengguna, kode undangan, batas laju, pesan darurat, bentrok jadwal, jam buka, batas reservasi, dan keamanan fungsi. Migrasi juga aman dijalankan dua kali.
 
 ### Berita terkini
 

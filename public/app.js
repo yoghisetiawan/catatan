@@ -138,7 +138,25 @@
     newsRefresh: $("#newsRefresh"),
     fabMic: $("#fabMic"),
     emptyRecBtn: $("#emptyRecBtn"),
+    copyBtn: $("#copyBtn"),
+    moveBtn: $("#moveBtn"),
+    focusBtn: $("#focusBtn"),
+    moveDialog: $("#moveDialog"),
+    moveList: $("#moveList"),
+    moveNoteTitle: $("#moveNoteTitle"),
+    mergeToggle: $("#mergeToggle"),
+    mergeBar: $("#mergeBar"),
+    mergeCount: $("#mergeCount"),
+    mergeDoBtn: $("#mergeDoBtn"),
+    mergeCancelBtn: $("#mergeCancelBtn"),
+    folderHead: $("#folderHead"),
+    modList: $("#modList"),
+    modPane: $("#modPane"),
   };
+
+  // Tampilan yang dikelola modul terpisah (social.js, booking.js): chat, grup, darurat, reservasi.
+  const MOD_VIEWS = { emergency: "Pesan darurat", groups: "Pesan grup", chat: "Chat room", booking: "Reservasi meja" };
+  const isModView = () => Object.prototype.hasOwnProperty.call(MOD_VIEWS, state.view);
 
   // ---------- Tanggal & folder (fungsi kecil, dipakai di banyak tempat) ----------
   function pad2(n) {
@@ -153,11 +171,13 @@
     return new Date(y, m - 1, d);
   }
   const FOLDER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+  const FOLDER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const PENDING_VENUE_KEY = "catatan.pendingVenue";
   const MAX_FOLDER_DEPTH = 5;
 
   // ---------- State ----------
   let notes = [];
-  const prefs = Object.assign({ theme: null, sort: "updated", collapsed: [], installDismissed: 0 }, load(PREFS_KEY, {}));
+  const prefs = Object.assign({ theme: null, sort: "updated", collapsed: [], installDismissed: 0, foldersHidden: false }, load(PREFS_KEY, {}));
   if (!Array.isArray(prefs.collapsed)) prefs.collapsed = [];
   const state = {
     view: "all", activeId: null, query: "", mode: "edit",
@@ -676,7 +696,7 @@
       if (state.view === "trash") return n.trashed;
       if (n.trashed) return false;
       if (state.view === "pinned") return n.pinned;
-      if (state.view === "news") return false;
+      if (state.view === "news" || isModView()) return false;
       if (state.view === "reminders") return !!n.remindAt;
       if (state.view === "calendar") return noteOnDay(n, state.calDay);
       if (folderIds) return !!n.folderId && folderIds.has(n.folderId);
@@ -729,6 +749,45 @@
     return `${d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric" })} ${t}`;
   }
 
+  const DOC_ICON =
+    '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/></svg>';
+  const MIC_ICON =
+    '<svg class="ico mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>';
+  const VOICE_TAG = "suara"; // ditambahkan otomatis ke catatan yang diisi lewat rekam suara
+  const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>';
+
+  function cardDate(ts) {
+    const d = new Date(ts);
+    return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
+  }
+
+  // Judul kelompok daftar menurut tanggal (Hari ini, Kemarin, Minggu ini, Bulan ini, lalu per bulan).
+  function dateGroup(ts) {
+    const now = new Date();
+    const d = new Date(ts);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const day = 86_400_000;
+    if (ts >= today) return "Hari ini";
+    if (ts >= today - day) return "Kemarin";
+    if (ts >= today - 6 * day) return "Minggu ini";
+    if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) return "Bulan ini";
+    return d.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+  }
+
+  function groupedCards(list, q) {
+    if (q || prefs.sort === "title") return list.map((n) => cardHtml(n, q)).join("");
+    const field = prefs.sort === "created" ? "createdAt" : "updatedAt";
+    let last = "";
+    return list
+      .map((n) => {
+        const g = dateGroup(n[field]);
+        const head = g !== last ? `<div class="group-label">${escapeHtml(g)}</div>` : "";
+        last = g;
+        return head + cardHtml(n, q);
+      })
+      .join("");
+  }
+
   function cardHtml(n, q) {
     const remind =
       n.remindAt && !n.trashed
@@ -736,8 +795,9 @@
         : "";
     const tags = n.tags.slice(0, 3).map((t) => `<span class="mini-tag">#${escapeHtml(t)}</span>`).join("");
     return `
-      <button class="note-card${n.id === state.activeId ? " active" : ""}" data-id="${n.id}" style="--note-color:${n.color || "transparent"}">
-        <h4>${n.pinned && !n.trashed ? PIN_SVG : ""}<span class="t">${n.title ? highlight(n.title, q) : '<span style="color:var(--faint)">Tanpa judul</span>'}</span></h4>
+      <button class="note-card${n.id === state.activeId && !merge.on ? " active" : ""}${merge.on && merge.sel.has(n.id) ? " picked" : ""}" data-id="${n.id}" style="--note-color:${n.color || "transparent"}">
+        ${merge.on ? `<span class="pick">${CHECK_ICON}</span>` : ""}
+        <h4>${n.pinned && !n.trashed ? PIN_SVG : n.tags.includes(VOICE_TAG) ? MIC_ICON : DOC_ICON}<span class="t">${n.title ? highlight(n.title, q) : '<span style="color:var(--faint)">Tanpa judul</span>'}</span><span class="card-date">${cardDate(prefs.sort === "created" ? n.createdAt : n.updatedAt)}</span></h4>
         <p>${snippet(n, q)}</p>
         <div class="meta"><span>${relativeTime(n.updatedAt)}</span>${remind}${n.shareId && !n.trashed ? SHARE_BADGE : ""}${tags}</div>
       </button>`;
@@ -752,7 +812,7 @@
     }
     if (v === "calendar")
       return parseYmd(state.calDay).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
-    return { all: "Semua catatan", pinned: "Disematkan", trash: "Sampah", reminders: "Pengingat & alarm", news: "Berita terkini" }[v] || "Catatan";
+    return { all: "Semua catatan", pinned: "Disematkan", trash: "Sampah", reminders: "Pengingat & alarm", news: "Berita terkini", ...MOD_VIEWS }[v] || "Catatan";
   }
 
   function emptyMessage(q) {
@@ -774,8 +834,11 @@
     const q = state.query.trim();
     el.listTitle.textContent = viewTitle();
     document.body.classList.toggle("view-news", state.view === "news");
+    document.body.classList.toggle("view-mod", isModView());
 
-    if (state.view === "news") {
+    if (isModView()) {
+      /* modul mengelola isi daftarnya sendiri */
+    } else if (state.view === "news") {
       el.noteList.innerHTML = newsHtml(q);
     } else if (!list.length) {
       el.noteList.innerHTML = `<div class="list-empty">${emptyMessage(q)}</div>`;
@@ -784,7 +847,7 @@
       const others = list.filter((n) => !n.pinned);
       let html = "";
       if (pinned.length) html += `<div class="group-label">Disematkan</div>` + pinned.map((n) => cardHtml(n, q)).join("");
-      if (others.length) html += (pinned.length ? `<div class="group-label">Lainnya</div>` : "") + others.map((n) => cardHtml(n, q)).join("");
+      if (others.length) html += groupedCards(others, q);
       el.noteList.innerHTML = html;
     } else if (state.view === "reminders") {
       const now = Date.now();
@@ -800,8 +863,9 @@
         })
         .join("");
     } else {
-      el.noteList.innerHTML = list.map((n) => cardHtml(n, q)).join("");
+      el.noteList.innerHTML = groupedCards(list, q);
     }
+    el.noteList.classList.toggle("merging", merge.on);
 
     // counts
     const live = notes.filter((n) => !n.trashed);
@@ -877,7 +941,9 @@
 
   function renderFolders(live) {
     const on = state.features.v3;
-    el.addFolderBtn.classList.toggle("hidden", !on);
+    el.addFolderBtn.classList.toggle("hidden", !on || prefs.foldersHidden);
+    el.folderTree.classList.toggle("hidden", prefs.foldersHidden);
+    el.folderHead.setAttribute("aria-expanded", String(!prefs.foldersHidden));
     if (!on) {
       el.folderTree.innerHTML =
         '<div class="folder-hint">Folder aktif setelah migrasi database 003 dijalankan (lihat README).</div>';
@@ -1074,6 +1140,7 @@
   }
 
   function renderEditor() {
+    if (isModView()) return; // panel kanan dikelola modul
     if (voice.active && voice.noteId !== state.activeId) stopDictation();
     const n = activeNote();
     el.emptyState.classList.toggle("hidden", !!n);
@@ -1109,6 +1176,7 @@
         flat.map(({ folder, depth }) => `<option value="${folder.id}">${"\u2003".repeat(depth)}${escapeHtml(folder.name)}</option>`).join("");
       el.folderSelect.value = n.folderId && folderById(n.folderId) ? n.folderId : "";
     }
+    el.moveBtn.classList.toggle("hidden", !v3 || readOnly);
     el.remindBtn.classList.toggle("hidden", !v3 || readOnly);
     el.remindBtn.classList.toggle("set", !!n.remindAt);
     el.remindBtn.title = n.remindAt ? `Pengingat: ${formatRemind(n.remindAt)}` : "Atur pengingat";
@@ -1287,7 +1355,24 @@
   }
 
   function setView(view) {
+    const prev = state.view;
     state.view = view;
+    if (merge.on) {
+      merge.on = false;
+      merge.sel.clear();
+      el.mergeToggle.classList.remove("on");
+      el.mergeToggle.textContent = "Gabung";
+      renderMergeBar();
+    }
+    if (prev !== view && Object.prototype.hasOwnProperty.call(MOD_VIEWS, prev) && modules[prev] && modules[prev].leave) modules[prev].leave(prev);
+    if (Object.prototype.hasOwnProperty.call(MOD_VIEWS, view)) {
+      state.activeId = null;
+      el.app.classList.remove("editing");
+      render();
+      if (modules[view]) modules[view].enter(view);
+      else el.modList.innerHTML = '<div class="mod-note">Modul ini gagal dimuat. Muat ulang halaman.</div>';
+      return;
+    }
     if (view === "news") loadNews();
     const list = visibleNotes();
     if (!list.some((n) => n.id === state.activeId)) state.activeId = window.innerWidth > 760 && list[0] ? list[0].id : null;
@@ -1809,6 +1894,157 @@
     resolveImages(el.sharedContent);
   }
 
+  // ---------- Salin, pindahkan, mode fokus ----------
+  async function copyActive() {
+    const n = activeNote();
+    if (!n) return;
+    const text = (n.title ? n.title + "\n\n" : "") + n.content.replace(/\(attachment:[^)]+\)/g, "(gambar)");
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    toast("Isi catatan disalin");
+  }
+
+  function openMove() {
+    const n = activeNote();
+    if (!n || n.trashed) return;
+    if (!state.features.v3) return toast("Folder butuh migrasi database 003 (lihat README).");
+    const cur = n.folderId && folderById(n.folderId) ? n.folderId : "";
+    el.moveNoteTitle.textContent = n.title || "Tanpa judul";
+    const item = (id, name, depth) =>
+      `<button class="move-item${id === cur ? " current" : ""}" data-folder="${id}" style="padding-left:${10 + depth * 18}px">${FOLDER_SVG}<span>${escapeHtml(name)}</span></button>`;
+    el.moveList.innerHTML =
+      item("", "Tanpa folder", 0) + flatFolders().map(({ folder, depth }) => item(folder.id, folder.name, depth)).join("") +
+      (folders.length ? "" : '<p class="set-sub">Belum ada folder. Buat dulu lewat tombol + di bagian Folder.</p>');
+    el.moveDialog.showModal();
+  }
+
+  function moveActive(folderId) {
+    const n = activeNote();
+    if (!n) return;
+    n.folderId = folderId || null;
+    el.moveDialog.close();
+    touch(n);
+    renderEditor();
+    toast(n.folderId ? `Dipindahkan ke “${folderById(n.folderId).name}”` : "Dikeluarkan dari folder");
+  }
+
+  function toggleFocus(force) {
+    const on = force === undefined ? !el.app.classList.contains("focus") : force;
+    el.app.classList.toggle("focus", on);
+    el.focusBtn.title = on ? "Keluar dari mode fokus (Esc)" : "Mode fokus (layar penuh)";
+  }
+
+  // ---------- Gabung catatan ----------
+  const merge = { on: false, sel: new Set() };
+
+  function setMerge(on) {
+    merge.on = on;
+    merge.sel.clear();
+    el.mergeToggle.classList.toggle("on", on);
+    el.mergeToggle.textContent = on ? "Selesai" : "Gabung";
+    renderMergeBar();
+    renderList();
+  }
+
+  function renderMergeBar() {
+    el.mergeBar.classList.toggle("hidden", !merge.on);
+    el.mergeCount.textContent = merge.sel.size ? `${merge.sel.size} catatan dipilih` : "Pilih 2 catatan atau lebih";
+    el.mergeDoBtn.disabled = merge.sel.size < 2;
+  }
+
+  function toggleMergePick(id) {
+    merge.sel.has(id) ? merge.sel.delete(id) : merge.sel.add(id);
+    renderMergeBar();
+    renderList();
+  }
+
+  async function mergeSelected() {
+    const sel = notes.filter((n) => merge.sel.has(n.id) && !n.trashed).sort((a, b) => a.createdAt - b.createdAt);
+    if (sel.length < 2) return toast("Pilih minimal 2 catatan");
+    const id = uid();
+    const refRe = /attachment:([^\s)]+)/g;
+
+    // Gambar tersimpan per catatan (folder <user>/<id catatan>), jadi salin dulu ke folder catatan baru.
+    const paths = new Set();
+    sel.forEach((n) => [...n.content.matchAll(refRe)].forEach((m) => paths.add(m[1])));
+    const map = new Map();
+    if (paths.size) {
+      if (!state.features.v2 || state.offline || !navigator.onLine) return toast("Catatan yang berisi gambar hanya bisa digabung saat online.");
+      el.mergeDoBtn.disabled = true;
+      toast("Menyalin gambar…");
+      try {
+        for (const p of paths) {
+          if (!p.startsWith(state.user.id + "/")) continue;
+          const to = `${state.user.id}/${id}/${p.split("/").pop()}`;
+          const { error } = await sb.storage.from(ATTACH_BUCKET).copy(p, to);
+          if (error) throw error;
+          map.set(p, to);
+        }
+      } catch (err) {
+        await removeAttachments(id).catch(() => {});
+        renderMergeBar();
+        return toast("Gagal menyalin gambar: " + ((err && err.message) || "coba lagi"));
+      }
+    }
+
+    const body = sel
+      .map((n) => (n.title ? `## ${n.title}\n\n` : "") + n.content.replace(refRe, (m, p) => "attachment:" + (map.get(p) || p)).trim())
+      .join("\n\n---\n\n");
+    if (body.length > 900_000) return toast("Hasil gabungan terlalu besar");
+    const titles = sel.map((n) => n.title).filter(Boolean);
+    const now = Date.now();
+    const merged = {
+      id,
+      title: (titles.length ? "Gabungan: " + titles.join(", ") : `Gabungan ${sel.length} catatan`).slice(0, 140),
+      content: body,
+      tags: [...new Set(sel.flatMap((n) => n.tags))].slice(0, 20),
+      color: "", pinned: false, trashed: false, createdAt: now, updatedAt: now,
+      folderId: (sel.find((n) => n.folderId && folderById(n.folderId)) || {}).folderId || null,
+      remindAt: null,
+    };
+    notes.unshift(merged);
+    dirty.add(id);
+    sel.forEach((n) => {
+      n.trashed = true;
+      n.trashedAt = now;
+      n.pinned = false;
+      n.remindAt = null;
+      stamp(n);
+      dirty.add(n.id);
+    });
+    merge.on = false;
+    merge.sel.clear();
+    el.mergeToggle.classList.remove("on");
+    el.mergeToggle.textContent = "Gabung";
+    renderMergeBar();
+    state.view = "all";
+    state.activeId = merged.id;
+    state.query = "";
+    el.searchInput.value = "";
+    persist(null, true);
+    render();
+    toast(`${sel.length} catatan digabung. Aslinya ada di Sampah.`, "Urungkan", () => {
+      sel.forEach((n) => {
+        n.trashed = false;
+        n.trashedAt = null;
+        stamp(n);
+        dirty.add(n.id);
+      });
+      permanentlyDelete(merged);
+      state.activeId = sel[0].id;
+      persist(null, true);
+      render();
+    });
+  }
+
   // ---------- Berita terkini ----------
   // Berita diambil oleh fungsi server kecil (api/news.py) dari RSS publik media Indonesia, karena
   // browser tidak boleh mengambil RSS situs lain langsung (CORS). Yang dikirim ke server hanya nama sumber.
@@ -1955,8 +2191,8 @@
     });
   }
 
-  function startSound() {
-    if (alarmMuted || beepTimer) return;
+  function startSound(force = false) {
+    if ((alarmMuted && !force) || beepTimer) return;
     unlockAudio();
     // Getar hanya jika pengguna pernah berinteraksi dengan halaman (kalau tidak, browser menolaknya).
     if (navigator.vibrate && navigator.userActivation && navigator.userActivation.hasBeenActive) navigator.vibrate([300, 150, 300]);
@@ -1972,15 +2208,12 @@
   }
 
   function showNotification(n) {
+    notifyRaw(n.title || "Pengingat catatan", plainText(n.content).slice(0, 120) || "Waktunya melihat catatan ini.", "remind-" + n.id);
+  }
+
+  function notifyRaw(title, body, tag) {
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    const title = n.title || "Pengingat catatan";
-    const opts = {
-      body: plainText(n.content).slice(0, 120) || "Waktunya melihat catatan ini.",
-      tag: "remind-" + n.id,
-      icon: "icons/icon-192.png",
-      requireInteraction: true,
-      data: { id: n.id },
-    };
+    const opts = { body, tag, icon: "icons/icon-192.png", requireInteraction: true, data: { tag } };
     const fallback = () => {
       try {
         const x = new Notification(title, opts);
@@ -2131,6 +2364,10 @@
     const value = voice.before + lead + text + voice.after;
     if (value === n.content) return;
     n.content = value;
+    if (text && !n.tags.includes(VOICE_TAG) && n.tags.length < 20) {
+      n.tags.push(VOICE_TAG); // penanda catatan suara (ikon mikrofon di daftar)
+      if (state.activeId === n.id) renderChips(n);
+    }
     if (state.activeId === n.id) {
       el.contentInput.value = value;
       const caret = (voice.before + lead + text).length;
@@ -2306,6 +2543,35 @@
     toast("Catatan sudah terpasang ✓");
   });
 
+  // ---------- API untuk modul (social.js, booking.js) ----------
+  const modules = {};
+  const mods = new Set();
+  window.CatatanApp = {
+    register(views, mod) {
+      views.forEach((v) => (modules[v] = mod));
+      mods.add(mod);
+      if (state.user && mod.onLogin) mod.onLogin(state.user, sb);
+      if (isModView() && modules[state.view] === mod) mod.enter(state.view);
+    },
+    get sb() { return sb; },
+    get user() { return state.user; },
+    get online() { return navigator.onLine && !state.offline; },
+    list: el.modList,
+    pane: el.modPane,
+    view: () => state.view,
+    setView,
+    toast, escapeHtml, relativeTime, fullDate, uid,
+    setCount(name, n) {
+      const e = document.querySelector(`[data-count="${name}"]`);
+      if (e) e.textContent = n ? (n > 99 ? "99+" : String(n)) : "";
+    },
+    setMainOpen(open) { el.app.classList.toggle("editing", !!open); },
+    sound: { start: () => startSound(true), stop: stopSound },
+    notify: notifyRaw,
+  };
+  const modsLogin = () => mods.forEach((m) => m.onLogin && m.onLogin(state.user, sb));
+  const modsLogout = () => mods.forEach((m) => m.onLogout && m.onLogout());
+
   // ---------- Events ----------
   el.newNoteBtn.addEventListener("click", () => createNote());
   el.emptyNewBtn.addEventListener("click", () => createNote());
@@ -2336,6 +2602,23 @@
     el.recNoteBtn.classList.remove("hidden");
     el.formatBar.querySelector('[data-fmt="mic"]').classList.remove("hidden");
   }
+
+  // Aksi catatan
+  el.copyBtn.addEventListener("click", copyActive);
+  el.moveBtn.addEventListener("click", openMove);
+  el.focusBtn.addEventListener("click", () => toggleFocus());
+  el.moveList.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-folder]");
+    if (b) moveActive(b.dataset.folder);
+  });
+  el.mergeToggle.addEventListener("click", () => setMerge(!merge.on));
+  el.mergeCancelBtn.addEventListener("click", () => setMerge(false));
+  el.mergeDoBtn.addEventListener("click", mergeSelected);
+  el.folderHead.addEventListener("click", () => {
+    prefs.foldersHidden = !prefs.foldersHidden;
+    savePrefs();
+    renderList();
+  });
 
   // Folder
   el.addFolderBtn.addEventListener("click", () => addFolder(null));
@@ -2423,7 +2706,9 @@
 
   el.noteList.addEventListener("click", (e) => {
     const card = e.target.closest(".note-card");
-    if (card) selectNote(card.dataset.id);
+    if (!card) return;
+    if (merge.on) toggleMergePick(card.dataset.id);
+    else selectNote(card.dataset.id);
   });
 
   el.searchInput.addEventListener("input", () => {
@@ -2662,7 +2947,7 @@
     const b = e.target.closest("[data-action]");
     if (!b) return;
     toggleMenu(false);
-    ({ share: openShare, history: openHistory, export: openExport, print: printNote })[b.dataset.action]();
+    ({ share: openShare, history: openHistory, export: openExport, print: printNote, copy: copyActive, move: openMove })[b.dataset.action]();
   });
 
   // Ekspor
@@ -2762,6 +3047,8 @@
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
     if (!state.user || document.querySelector("dialog[open]")) return;
     if (e.key === "Escape" && !el.moreMenu.classList.contains("hidden")) return toggleMenu(false);
+    if (e.key === "Escape" && el.app.classList.contains("focus")) return toggleFocus(false);
+    if (e.key === "Escape" && merge.on) return setMerge(false);
     if (mod && e.key.toLowerCase() === "k") {
       e.preventDefault();
       el.searchInput.focus();
@@ -2903,6 +3190,7 @@
     pendingDeletes.clear();
     signedUrls.clear();
     stopDictation();
+    modsLogout();
     folders = [];
     foldersDirty = false;
     foldersAt = 0;
@@ -2998,6 +3286,14 @@
     purgeOldTrash();
     subscribeRealtime();
     checkReminders();
+    modsLogin();
+    // Tautan reservasi (?reservasi=<id>) yang dibuka sebelum masuk: lanjutkan setelah login.
+    const pending = localStorage.getItem(PENDING_VENUE_KEY);
+    if (pending && FOLDER_UUID_RE.test(pending) && modules.booking) {
+      localStorage.removeItem(PENDING_VENUE_KEY);
+      setView("booking");
+      modules.booking.openVenue(pending);
+    }
     if (migrated) toast(`${migrated} catatan lokal dipindahkan ke akunmu`);
   }
 
@@ -3130,6 +3426,13 @@
 
     const shareId = new URLSearchParams(location.search).get("share");
     if (shareId) return bootShared(shareId);
+
+    // Tautan reservasi: simpan dulu (login lewat Google mengalihkan halaman dan membuang query).
+    const venueParam = new URLSearchParams(location.search).get("reservasi");
+    if (venueParam && FOLDER_UUID_RE.test(venueParam)) {
+      localStorage.setItem(PENDING_VENUE_KEY, venueParam.toLowerCase());
+      history.replaceState(null, "", location.pathname);
+    }
 
     setAuthMode("login");
 

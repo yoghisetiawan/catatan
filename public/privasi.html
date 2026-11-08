@@ -39,6 +39,8 @@
           <li><b>Isi catatan:</b> judul, isi, tag, warna, status sematan dan sampah, serta tanggal dibuat dan diubah.</li>
           <li><b>Gambar</b> yang kamu tempel ke catatan.</li>
           <li><b>Folder</b> (nama dan susunannya) serta <b>waktu pengingat</b> yang kamu atur pada catatan.</li>
+          <li><b>Chat:</b> nama tampilan yang kamu pilih, ruang dan grup yang kamu ikuti, serta isi pesanmu. Untuk pesan darurat juga <b>lokasi</b> (garis lintang dan bujur) bila kamu memilih menyertakannya.</li>
+          <li><b>Reservasi meja:</b> nama, nomor telepon (opsional), jumlah tamu, waktu, dan catatan yang kamu isi saat memesan; serta data tempat, meja, dan reservasi bila kamu pemilik tempat.</li>
           <li><b>Riwayat versi:</b> salinan lama sebuah catatan (maksimal 50 versi per catatan), dipakai agar kamu bisa memulihkan isi yang tertimpa.</li>
           <li><b>Pengaturan:</b> tema terang/gelap dan urutan daftar, disimpan di perangkatmu.</li>
         </ul>
@@ -64,6 +66,15 @@
         <h2>5. Rekam suara dan pengingat</h2>
         <p><b>Rekam suara</b> memakai fitur pengenalan suara bawaan browsermu dan baru aktif setelah kamu mengizinkan mikrofon serta menekan tombol Rekam atau mikrofon. Di Chrome dan Edge, suara yang kamu ucapkan dikirim ke layanan pengenalan suara milik penyedia browser untuk diubah menjadi teks. Catatan sendiri <b>tidak merekam atau menyimpan audio</b>; yang disimpan hanya teks hasilnya di catatanmu. Kamu bisa mencabut izin mikrofon kapan saja di pengaturan situs browsermu.</p>
         <p><b>Pengingat</b> memakai jam di perangkatmu. Notifikasi dibuat oleh browsermu dan hanya muncul setelah kamu mengizinkannya; kami tidak mengirim notifikasi dari server.</p>
+
+        <h2>5a. Chat, grup, dan reservasi</h2>
+        <ul>
+          <li><b>Chat room</b> bersifat terbuka: pesanmu dapat dibaca semua anggota ruang itu, dan ruangnya dapat dilihat semua pengguna yang login. <b>Grup</b> hanya dapat dibaca anggotanya. Nama tampilanmu terlihat oleh anggota; emailmu tidak.</li>
+          <li><b>Pesan darurat</b> beserta lokasinya terlihat oleh seluruh anggota grup yang kamu pilih, dan tetap tersimpan di riwayat grup sampai dihapus. Lokasi hanya diambil saat kamu menekan kirim dan mengizinkannya; tautan peta membuka OpenStreetMap, yang punya kebijakan privasinya sendiri.</li>
+          <li>Pesan tidak dienkripsi ujung ke ujung. Pengelola layanan (administrator proyek Supabase) secara teknis dapat membacanya, dan kami tidak memakainya untuk tujuan lain.</li>
+          <li><b>Reservasi:</b> nama, telepon, dan catatan pemesananmu dikirim ke <b>pemilik tempat</b> yang kamu pesan; pemilik itu bertanggung jawab atas data tersebut. Pengguna lain hanya melihat jam yang sudah terisi, tanpa data pribadi.</li>
+          <li>Kamu bisa menghapus pesanmu sendiri, keluar dari ruang atau grup, dan membatalkan reservasi. Menghapus akun menghapus semua pesan, ruang, tempat, dan reservasimu.</li>
+        </ul>
 
         <h2>6. Berbagi lewat link</h2>
         <p>Catatan hanya terlihat olehmu, <b>kecuali</b> kamu membuat link berbagi. Siapa pun yang memiliki link itu bisa membaca catatan tersebut (termasuk gambarnya) tanpa login, sampai kamu menghentikan berbagi atau menghapus catatannya. Link berisi kode acak yang sulit ditebak, dan halaman berbagi tidak diindeks mesin pencari. Bagikan link hanya kepada orang yang kamu percaya.</p>

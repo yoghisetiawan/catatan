@@ -22,6 +22,7 @@ tanpa build step dan tanpa server sendiri.
 - **Rekam suara**: tombol *Rekam* membuat catatan dari ucapan (bahasa Indonesia); tombol mikrofon di toolbar menyisipkan dikte ke catatan yang sedang dibuka
 - **Berita terkini**: headline dari RSS publik (Antara, CNN Indonesia, BBC Indonesia, CNBC Indonesia, Republika), bisa dicari dan disimpan ke catatan (tag `berita`)
 - Tombol **mikrofon melayang** dan tombol *Input Suara* di layar sambutan untuk merekam dari mana saja
+- **Tampilan koordinasi di Chat room dan Pesan grup**: pesan berupa kartu dengan nama, label peran (PEMILIK/ANGGOTA), **atribut klasifikasi** (mis. Absen, Pengeluaran; bisa pilihan ganda), gambar, tombol salin dan hapus, filter menurut atribut, pencarian, dan panel **Kelola Atribut** untuk pemilik ruang
 - **Pesan WhatsApp Cepat** (menu Pesan darurat): pilih kontak tersimpan atau ketik nomor, tulis pesan (ada templat darurat dan opsi tautan lokasi), lalu buka WhatsApp dengan pesan siap kirim. Kontak yang sama dipakai di halaman Pengingat
 - **Chat room** (ruang terbuka), **Pesan grup** (privat, masuk dengan kode undangan), dan **Pesan darurat** (pesan berprioritas ke grup: alarm + notifikasi di perangkat anggota, plus lokasi bila diizinkan), semuanya realtime
 - **Reservasi meja**: pemilik tempat membuat tempat, meja, dan jam buka lalu membagikan tautan pemesanan; pelanggan memilih tanggal, jam, dan meja; bentrok dicegah di database
@@ -56,6 +57,7 @@ catatan/
 │   ├── migrations/003_folder_pengingat.sql  # folder bertingkat + pengingat
 │   ├── migrations/004_chat_darurat_reservasi.sql  # chat, grup, darurat, reservasi meja
 │   ├── migrations/005_pengingat_kontak.sql  # pengingat umum, jobdesk, kontak
+│   ├── migrations/006_chat_atribut_gambar.sql  # atribut pesan + gambar di chat
 │   └── email-templates/               # template email berbahasa Indonesia (tempel manual di Supabase)
 └── vercel.json          # konfigurasi hosting Vercel
 ```
@@ -73,6 +75,8 @@ catatan/
    untuk **chat, grup, darurat, dan reservasi meja** (tanpa migrasi 004, menu-menu itu menampilkan petunjuk).
    Lalu [`supabase/migrations/005_pengingat_kontak.sql`](supabase/migrations/005_pengingat_kontak.sql)
    untuk **pengingat mandiri, jobdesk, dan kontak** (tanpa migrasi 005, halamannya menampilkan petunjuk).
+   Lalu [`supabase/migrations/006_chat_atribut_gambar.sql`](supabase/migrations/006_chat_atribut_gambar.sql)
+   untuk **atribut pesan dan gambar di chat** (tanpa migrasi 006, chat tetap berfungsi tanpa atribut dan gambar).
 3. **Isi konfigurasi:** buka **Project Settings → API Keys**, salin *Project URL* dan kunci
    **anon / publishable** ke `public/config.js`:
    ```js
@@ -218,6 +222,14 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
 - Pesan **tidak dienkripsi ujung ke ujung**: administrator proyek Supabase secara teknis dapat membacanya. Hapus pesan lewat tombol "hapus" hanya terlihat di perangkat lain setelah memuat ulang
   (peristiwa DELETE sengaja tidak dilanggan, karena tidak bisa disaring per pengguna).
 
+### Atribut dan gambar di chat
+
+- Pemilik ruang membuat **atribut** (nama, dengan atau tanpa **pilihan ganda**) lewat tombol *Kelola Atribut*. Anggota memilih atribut (dan opsinya) saat mengirim pesan, lalu semua anggota bisa menyaring pesan menurut atribut atau mencari teks.
+  Mengganti nama atribut ikut mengubah pesan lama; menghapus atribut membiarkan pesan lama tanpa klasifikasi.
+- **Gambar** (PNG/JPG/GIF/WebP, maks. 5 MB; foto besar diperkecil) disimpan di bucket privat `chat-images` pada `<id ruang>/<id pengirim>/<berkas>`. Hanya anggota ruang yang bisa melihat dan mengunggah,
+  pengirim dan pemilik ruang bisa menghapus. Pesan boleh hanya berisi gambar. Server memeriksa bahwa path gambar milik pengirim dan ruang itu.
+- Pesan darurat tidak boleh membawa atribut atau gambar. Menghapus ruang (oleh pemilik) juga menghapus gambarnya (sebisanya).
+
 ### Pesan WhatsApp Cepat
 
 Halaman Pesan darurat berisi formulir WhatsApp (penerima dari kontak tersimpan atau nomor yang diketik, isi pesan, tautan lokasi opsional) dan daftar kontak.
@@ -234,7 +246,7 @@ Pengiriman dilakukan di aplikasi WhatsApp milikmu lewat tautan `wa.me`; Catatan 
 
 ### Pengujian SQL
 
-Aturan di migrasi 004 dan 005 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
+Aturan di migrasi 004, 005, dan 006 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
 akses lintas pengguna, kode undangan, batas laju, pesan darurat, bentrok jadwal, jam buka, batas reservasi, dan keamanan fungsi. Migrasi juga aman dijalankan dua kali.
 
 ### Berita terkini

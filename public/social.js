@@ -29,6 +29,14 @@
     alerts: [],
     sos: { sel: null, msg: "Saya butuh bantuan!", loc: true, busy: false, note: "" },
     sosOpen: false,
+    attrs: [],
+    attrAvail: null,
+    roleByName: new Map(),
+    compose: { attr: null, opt: null, file: null },
+    filter: { attr: null, q: "" },
+    panel: false,
+    panelQ: "",
+    imgUrls: new Map(),
     // Pesan WhatsApp Cepat (halaman Pesan Darurat)
     wa: { to: "", pick: null, msg: "", loc: false, contacts: [], cAvail: null, err: "", cerr: "", sug: false, busy: false },
     channel: null,
@@ -76,6 +84,7 @@
       read: {}, active: null, msgs: [], oldest: 0, newest: 0, hasMore: false, members: null, form: null, emergencies: [], seenEm: 0, alerts: [],
     });
     S.sos.sel = null;
+    Object.assign(S, { attrs: [], attrAvail: null, roleByName: new Map(), compose: { attr: null, opt: null, file: null }, filter: { attr: null, q: "" }, panel: false, panelQ: "", imgUrls: new Map() });
     Object.assign(S.wa, { to: "", pick: null, msg: "", loc: false, contacts: [], cAvail: null, err: "", cerr: "", sug: false, busy: false });
     closeAlert(true);
     updateBadges();
@@ -194,6 +203,7 @@
     const { data } = await sb().from("chat_messages").select("*").eq("room_id", rid).gt("id", S.newest).order("id", { ascending: true }).limit(100);
     if (!S.active || S.active.id !== rid) return;
     (data || []).forEach(incoming);
+    loadAttrs();
   }
 
   function incoming(row) {
@@ -334,40 +344,118 @@
     renderConversation();
   }
 
-  // ───────────────────────── percakapan
+  // ───────────────────────── percakapan (tampilan koordinasi: atribut, filter, gambar)
+  const IMG_BUCKET = "chat-images";
+  const IMG_TYPES = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
+  const MAX_IMG = 5 * 1024 * 1024;
+  const I = {
+    tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.2"/></svg>',
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+    img: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>',
+    send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+    funnel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"/></svg>',
+    down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>',
+    group: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  };
+  const isOwnerHere = () => !!S.active && S.roles.get(S.active.id) === "owner";
+  const passes = (m) => {
+    if (S.filter.attr && m.attr !== S.filter.attr) return false;
+    const q = S.filter.q.trim().toLowerCase();
+    return !q || `${m.body} ${m.sender_name} ${m.attr || ""} ${m.attr_option || ""}`.toLowerCase().includes(q);
+  };
+  const attrOf = (name) => S.attrs.find((a) => a.name === name) || null;
+
+  async function loadAttrs() {
+    if (!S.active) return;
+    const id = S.active.id;
+    const { data, error } = await sb().from("chat_attributes").select("*").eq("room_id", id).order("created_at", { ascending: true });
+    if (!S.active || S.active.id !== id) return;
+    if (error) {
+      if (/^(42P01|PGRST205)$/.test(error.code || "")) S.attrAvail = false;
+      return;
+    }
+    S.attrAvail = true;
+    const same = JSON.stringify(S.attrs) === JSON.stringify(data || []);
+    S.attrs = data || [];
+    if (S.filter.attr && !attrOf(S.filter.attr)) S.filter.attr = null;
+    if (S.compose.attr && !attrOf(S.compose.attr)) S.compose.attr = S.compose.opt = null;
+    if (!same) {
+      renderFilter();
+      renderAttrChips();
+      renderPanel();
+    }
+  }
+
   function msgHtml(m, prev) {
     const mine = m.user_id === me();
-    const owner = S.active && S.roles.get(S.active.id) === "owner";
+    const canDel = mine || isOwnerHere();
     const day = !prev || dayKey(prev.created_at) !== dayKey(m.created_at) ? `<div class="chat-day">${esc(dayLabel(m.created_at))}</div>` : "";
     const link = m.kind === "emergency" && m.lat != null ? mapLink(m.lat, m.lng) : "";
-    return `${day}<div class="msg${mine ? " me" : ""}${m.kind === "emergency" ? " emergency" : ""}" data-mid="${m.id}">
-      ${mine ? "" : `<span class="who">${esc(m.sender_name)}</span>`}
-      <div class="bubble">${m.kind === "emergency" ? "🚨 <b>DARURAT</b>\n" : ""}${esc(m.body)}${link ? `\n<a class="loc" href="${esc(link)}" target="_blank" rel="noopener noreferrer">📍 Lihat lokasi di peta</a>` : ""}</div>
-      <span class="when">${hm(m.created_at)}${mine || owner ? `<button data-s="del" data-id="${m.id}" title="Hapus pesan">hapus</button>` : ""}</span></div>`;
+    const role = S.roleByName.get(m.sender_name) === "owner" ? '<span class="cr-role owner">PEMILIK</span>' : '<span class="cr-role">ANGGOTA</span>';
+    const tag = m.attr ? `<span class="cr-tag">${I.tag}${esc(m.attr)}${m.attr_option ? " · " + esc(m.attr_option) : ""}</span>` : "";
+    return `${day}<div class="cr-msg${mine ? " me" : ""}${m.kind === "emergency" ? " emergency" : ""}" data-mid="${m.id}">
+      <div class="cr-top"><b>${esc(m.sender_name)}</b>${role}<span class="grow"></span>
+        <button class="icon-btn mini" data-s="copy" data-id="${m.id}" title="Salin pesan" aria-label="Salin pesan">${I.copy}</button>
+        ${canDel ? `<button class="icon-btn mini del" data-s="del" data-id="${m.id}" title="Hapus pesan" aria-label="Hapus pesan">${I.trash}</button>` : ""}</div>
+      ${tag}${m.kind === "emergency" ? '<span class="cr-tag sos">🚨 DARURAT</span>' : ""}
+      ${m.image_path ? `<img class="cr-img" data-img="${esc(m.image_path)}" alt="Gambar dari ${esc(m.sender_name)}" />` : ""}
+      ${m.body ? `<div class="cr-text">${esc(m.body)}</div>` : ""}
+      ${link ? `<a class="loc" href="${esc(link)}" target="_blank" rel="noopener noreferrer">📍 Lihat lokasi di peta</a>` : ""}
+      <div class="cr-time">${hm(m.created_at)}</div></div>`;
   }
 
   function renderConversation() {
     const r = S.active;
     const pane = App.pane;
-    const owner = S.roles.get(r.id) === "owner";
+    const owner = isOwnerHere();
     const grp = r.kind === "group";
     pane.innerHTML = `
-      <div class="mod-head">
-        <button class="icon-btn back-btn" data-s="back" title="Kembali"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
-        <div class="titles"><h3>${esc(r.name)}</h3><small>${S.counts.get(r.id) || 1} anggota${r.description ? " · " + esc(r.description) : ""}</small></div>
-        ${grp ? `<button class="mini-btn" data-s="invite" title="Salin kode undangan">Kode: ${esc(r.invite_code || "")}</button>` : ""}
-        ${grp ? '<button class="mini-btn danger" data-s="to-sos" title="Kirim pesan darurat ke grup ini">🚨</button>' : ""}
-        <button class="mini-btn" data-s="members">Anggota</button>
-        <button class="mini-btn danger" data-s="leave">${owner ? "Hapus" : "Keluar"}</button>
-      </div>
-      <div class="mod-body" style="flex:0;display:${S.members ? "flex" : "none"};padding-top:10px;padding-bottom:10px" id="chatMembers">${membersHtml()}</div>
-      <div class="chat-msgs" id="chatMsgs"></div>
-      <form class="chat-compose" data-s="send-form">
-        <textarea name="body" rows="1" maxlength="1000" placeholder="Tulis pesan…" title="Enter untuk kirim, Shift+Enter untuk baris baru"></textarea>
-        <button class="btn-primary" type="submit">Kirim</button>
-      </form>`;
+      <div class="cr-wrap${S.panel ? " panel-open" : ""}" id="crWrap">
+        <section class="cr-main">
+          <header class="cr-head">
+            <button class="icon-btn back-btn" data-s="back" title="Kembali"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+            <span class="cr-ico">${I.group}</span>
+            <div class="cr-titles"><h3>${esc(r.name)}</h3><small id="crCount"></small></div>
+            <div class="cr-actions">
+              <button class="cr-btn indigo" data-s="reserv" title="Buka Reservasi Meja">📅 Reservasi</button>
+              ${owner && S.attrAvail ? `<button class="cr-btn pink" data-s="attr-panel">${I.tag}Kelola Atribut</button>` : ""}
+              <button class="cr-btn" data-s="members">Anggota</button>
+              ${grp ? `<button class="cr-btn" data-s="invite" title="Salin kode undangan">Kode: ${esc(r.invite_code || "")}</button><button class="cr-btn danger" data-s="to-sos" title="Kirim pesan darurat ke grup ini">🚨</button>` : ""}
+              <button class="cr-btn outline" data-s="leave">${owner ? "Hapus ruang" : "Keluar"}</button>
+            </div>
+          </header>
+          <div class="cr-members" id="chatMembers" style="display:${S.members ? "flex" : "none"}">${membersHtml()}</div>
+          <div class="cr-filter" id="crFilter"></div>
+          <div class="cr-msgs" id="chatMsgs"></div>
+          <button class="cr-down hidden" id="crDown" data-s="down" title="Ke pesan terbaru" aria-label="Ke pesan terbaru">${I.down}</button>
+          <form class="cr-compose" data-s="send-form">
+            <div class="cr-attrs" id="crAttrs"></div>
+            <div class="cr-row">
+              <button class="icon-btn lg ${S.attrAvail ? "" : "hidden"}" type="button" data-s="pick-img" title="Lampirkan gambar" aria-label="Lampirkan gambar">${I.img}</button>
+              <input type="file" id="crFile" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+              <textarea name="body" rows="1" maxlength="1000" placeholder="Tulis balasan…" title="Enter untuk kirim, Shift+Enter untuk baris baru"></textarea>
+              <button class="cr-send" type="submit" title="Kirim" aria-label="Kirim">${I.send}</button>
+            </div>
+            <div class="cr-file" id="crFileInfo"></div>
+          </form>
+        </section>
+        <aside class="cr-panel" id="crPanel"></aside>
+      </div>`;
+    renderFilter();
+    renderAttrChips();
+    renderFileInfo();
+    renderPanel();
     paintMsgs(true);
+    const box = document.getElementById("chatMsgs");
+    box.addEventListener("scroll", () => document.getElementById("crDown").classList.toggle("hidden", box.scrollHeight - box.scrollTop - box.clientHeight < 300));
     App.setMainOpen(true);
+  }
+
+  function renderCount() {
+    const el = document.getElementById("crCount");
+    if (el) el.textContent = `Pesan: ${S.msgs.length}${S.hasMore ? "+" : ""} · ${S.counts.get(S.active.id) || 1} anggota`;
   }
 
   function membersHtml() {
@@ -375,27 +463,108 @@
     return `<div class="mod-line">${S.members.map((m) => `<span class="badge${m.role === "owner" ? " ok" : ""}">${esc(m.display_name)}${m.is_me ? " (aku)" : ""}${m.role === "owner" ? " · pemilik" : ""}</span>`).join("")}</div>`;
   }
 
+  function renderFilter() {
+    const box = document.getElementById("crFilter");
+    if (!box) return;
+    box.innerHTML = `<label class="cr-search${S.filter.q ? " open" : ""}">${I.search}<input data-s="fsearch" placeholder="Cari pesan…" value="${esc(S.filter.q)}" /></label>
+      ${S.attrs.length ? `<span class="cr-flabel">${I.funnel} FILTER:</span>
+      <button class="cr-chip${S.filter.attr ? "" : " on"}" data-s="fchip" data-name="">Semua</button>
+      ${S.attrs.map((a) => `<button class="cr-chip${S.filter.attr === a.name ? " on" : ""}" data-s="fchip" data-name="${esc(a.name)}">${esc(a.name)}</button>`).join("")}` : ""}`;
+  }
+
+  function renderAttrChips() {
+    const box = document.getElementById("crAttrs");
+    if (!box) return;
+    if (!S.attrAvail || !S.attrs.length) return void (box.innerHTML = "");
+    const sel = attrOf(S.compose.attr);
+    box.innerHTML =
+      `<div class="cr-chips">${S.attrs.map((a) => `<button type="button" class="cr-chip${S.compose.attr === a.name ? " on" : ""}" data-s="cattr" data-name="${esc(a.name)}">${I.tag}${esc(a.name)}</button>`).join("")}</div>` +
+      (sel && sel.options.length
+        ? `<div class="cr-chips opts"><small>Pilih opsi:</small>${sel.options.map((o) => `<button type="button" class="cr-chip${S.compose.opt === o ? " on" : ""}" data-s="copt" data-opt="${esc(o)}">${esc(o)}</button>`).join("")}</div>`
+        : "");
+  }
+
+  function renderFileInfo() {
+    const box = document.getElementById("crFileInfo");
+    if (!box) return;
+    const f = S.compose.file;
+    box.innerHTML = f ? `<span class="cr-fchip">${I.img}<span>${esc(f.name)} (${Math.max(1, Math.round(f.size / 1024))} KB)</span><button type="button" data-s="rm-img" aria-label="Batalkan gambar">✕</button></span>` : "";
+  }
+
+  // Panel "Kelola Atribut Klasifikasi" (hanya pemilik ruang)
+  function renderPanel() {
+    const panel = document.getElementById("crPanel");
+    const wrap = document.getElementById("crWrap");
+    if (!panel || !wrap) return;
+    const show = S.panel && isOwnerHere() && S.attrAvail;
+    wrap.classList.toggle("panel-open", !!show);
+    if (!show) return void (panel.innerHTML = "");
+    const q = S.panelQ.trim().toLowerCase();
+    const list = S.attrs.filter((a) => !q || a.name.toLowerCase().includes(q));
+    panel.innerHTML = `
+      <div class="cr-panel-head"><h3>${I.tag} Kelola Atribut Klasifikasi</h3><button class="icon-btn" data-s="panel-close" aria-label="Tutup panel">✕</button></div>
+      <p>Atribut klasifikasi pesan di ruang ini (mis. Absen, Belanja Pasar, Progres). Anggota memilihnya saat mengirim pesan, dan bisa menyaring pesan menurut atribut.</p>
+      <form data-s="attr-form" class="cr-attr-form">
+        <div class="cr-addrow"><input name="name" placeholder="Nama atribut baru…" maxlength="40" required /><button class="cr-add" type="submit">+ Tambah</button></div>
+        <input name="opts" placeholder="Pilihan ganda (opsional): pisahkan dengan koma" maxlength="300" />
+        <div class="mod-err" data-s="err"></div>
+      </form>
+      <label class="cr-search open wide">${I.search}<input data-s="psearch" placeholder="Cari atribut…" value="${esc(S.panelQ)}" /></label>
+      <div class="cr-attr-list">${
+        list.length
+          ? list.map((a) => `<div class="cr-attr" data-id="${esc(a.id)}"><div class="cr-attr-top"><b>${I.tag}${esc(a.name)}</b>
+              <span class="cr-attr-btns"><button class="cr-mini kelola" data-s="attr-opts">Kelola</button><button class="cr-mini rename" data-s="attr-rename">Ubah Nama</button><button class="icon-btn mini" data-s="attr-del" title="Hapus atribut" aria-label="Hapus atribut">${I.trash}</button></span></div>
+              <small>${a.options.length ? `Pilihan Ganda: <b>${a.options.length} opsi</b> (${esc(a.options.slice(0, 4).join(", "))}${a.options.length > 4 ? "…" : ""})` : "Teks bebas (tanpa pilihan)"}</small></div>`).join("")
+          : '<div class="mod-note">Belum ada atribut.</div>'
+      }</div>`;
+  }
+
+  async function resolveImgs() {
+    const box = document.getElementById("chatMsgs");
+    if (!box) return;
+    const imgs = [...box.querySelectorAll("img[data-img]:not([src])")];
+    const need = [...new Set(imgs.map((i) => i.dataset.img))].filter((p) => !S.imgUrls.has(p));
+    if (need.length) {
+      const { data } = await sb().storage.from(IMG_BUCKET).createSignedUrls(need, 3600);
+      (data || []).forEach((d) => d.signedUrl && S.imgUrls.set(d.path, d.signedUrl));
+    }
+    imgs.forEach((img) => {
+      const u = S.imgUrls.get(img.dataset.img);
+      if (u) {
+        img.src = u;
+        img.loading = "lazy";
+        img.referrerPolicy = "no-referrer";
+      } else img.replaceWith(Object.assign(document.createElement("span"), { className: "cr-time", textContent: "(gambar tidak tersedia)" }));
+    });
+  }
+
   function paintMsgs(toBottom) {
     const box = document.getElementById("chatMsgs");
     if (!box) return;
     const prevH = box.scrollHeight;
     const prevTop = box.scrollTop;
+    const vis = S.msgs.filter(passes);
     box.innerHTML =
-      (S.hasMore ? '<button class="chat-more" data-s="older">Muat pesan lebih lama</button>' : "") +
-      (S.msgs.length ? S.msgs.map((m, i) => msgHtml(m, S.msgs[i - 1])).join("") : '<div class="mod-note" style="text-align:center">Belum ada pesan. Mulai percakapan!</div>');
+      (S.hasMore && !S.filter.attr && !S.filter.q ? '<button class="chat-more" data-s="older">Muat pesan lebih lama</button>' : "") +
+      (vis.length ? vis.map((m, i) => msgHtml(m, vis[i - 1])).join("") : `<div class="mod-note" style="text-align:center">${S.msgs.length ? "Tidak ada pesan yang cocok dengan filter." : "Belum ada pesan. Mulai percakapan!"}</div>`);
     box.scrollTop = toBottom ? box.scrollHeight : box.scrollHeight - prevH + prevTop;
+    renderCount();
+    resolveImgs().then(() => toBottom && (box.scrollTop = box.scrollHeight));
   }
 
   function appendMsg(row) {
     if (S.msgs.some((m) => m.id === row.id)) return;
     S.msgs.push(row);
     S.newest = Math.max(S.newest, row.id);
+    renderCount();
     const box = document.getElementById("chatMsgs");
-    if (!box) return;
-    const near = box.scrollHeight - box.scrollTop - box.clientHeight < 120 || row.user_id === me();
+    if (!box || !passes(row)) return;
+    const near = box.scrollHeight - box.scrollTop - box.clientHeight < 160 || row.user_id === me();
     const empty = box.querySelector(".mod-note");
     if (empty) empty.remove();
-    box.insertAdjacentHTML("beforeend", msgHtml(row, S.msgs[S.msgs.length - 2]));
+    const vis = S.msgs.filter(passes);
+    box.insertAdjacentHTML("beforeend", msgHtml(row, vis[vis.length - 2]));
+    resolveImgs().then(() => near && (box.scrollTop = box.scrollHeight));
     if (near) box.scrollTop = box.scrollHeight;
   }
 
@@ -407,16 +576,29 @@
     S.msgs = [];
     S.hasMore = false;
     S.newest = S.oldest = 0;
+    S.attrs = [];
+    S.roleByName = new Map();
+    S.compose = { attr: null, opt: null, file: null };
+    S.filter = { attr: null, q: "" };
+    S.panel = false;
+    S.panelQ = "";
     renderList();
     renderPane();
-    const { data, error } = await sb().from("chat_messages").select("*").eq("room_id", id).order("id", { ascending: false }).limit(50);
+    const [msgs, attrs, members] = await Promise.all([
+      sb().from("chat_messages").select("*").eq("room_id", id).order("id", { ascending: false }).limit(50),
+      loadAttrs(),
+      sb().rpc("chat_room_members", { p_room: id }),
+    ]);
     if (!S.active || S.active.id !== id) return;
+    void attrs;
+    (members.data || []).forEach((m) => S.roleByName.set(m.display_name, m.role));
+    const { data, error } = msgs;
     if (error) return App.toast("Gagal memuat pesan: " + error.message);
     S.msgs = (data || []).reverse();
     S.hasMore = (data || []).length === 50;
     S.oldest = S.msgs.length ? S.msgs[0].id : 0;
     S.newest = S.msgs.length ? S.msgs[S.msgs.length - 1].id : 0;
-    paintMsgs(true);
+    renderConversation(); // gambar ulang: sekarang atribut, peran, dan pesan sudah ada
     if (S.newest) markRead(id, S.newest);
     else S.unread.delete(id);
     updateBadges();
@@ -436,16 +618,57 @@
     paintMsgs(false);
   }
 
+  // Perkecil foto besar sebelum diunggah (maks. 1800px).
+  async function shrink(file) {
+    if (file.type === "image/gif" || file.size < 1_200_000 || !window.createImageBitmap) return file;
+    try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, 1800 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(bmp.width * k);
+      c.height = Math.round(bmp.height * k);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      const type = file.type === "image/png" ? "image/webp" : "image/jpeg";
+      const blob = await new Promise((res) => c.toBlob(res, type, 0.85));
+      return blob && blob.size < file.size ? new File([blob], file.name, { type: blob.type }) : file;
+    } catch {
+      return file;
+    }
+  }
+
   async function sendMsg(form) {
     const ta = form.elements.body;
     const body = ta.value.trim();
-    if (!body || !S.active) return;
-    const btn = form.querySelector("button[type=submit]");
+    const cp = S.compose;
+    if ((!body && !cp.file) || !S.active) return;
+    const attr = S.attrAvail ? attrOf(cp.attr) : null;
+    if (attr && attr.options.length && !cp.opt) return App.toast(`Pilih opsi untuk atribut “${attr.name}” (atau batalkan atributnya).`);
+    const btn = form.querySelector(".cr-send");
     btn.disabled = true;
+    const roomId = S.active.id;
+    let path = null;
     try {
-      const row = one(await rpc("send_chat_message", { p_room: S.active.id, p_body: body }));
+      if (cp.file) {
+        if (!App.online) throw new Error("Sambungkan ke internet untuk mengirim gambar.");
+        const img = await shrink(cp.file);
+        if (img.size > MAX_IMG) throw new Error("Gambar terlalu besar (maksimal 5 MB).");
+        path = `${roomId}/${me()}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}.${IMG_TYPES[img.type] || "jpg"}`;
+        const up = await sb().storage.from(IMG_BUCKET).upload(path, img, { contentType: img.type, upsert: false });
+        if (up.error) throw new Error("Gagal mengunggah gambar: " + up.error.message);
+      }
+      const args = { p_room: roomId, p_body: body };
+      if (S.attrAvail) Object.assign(args, { p_attr: attr ? attr.name : null, p_attr_option: attr && cp.opt ? cp.opt : null, p_image: path });
+      let row;
+      try {
+        row = one(await rpc("send_chat_message", args));
+      } catch (err) {
+        if (path) sb().storage.from(IMG_BUCKET).remove([path]).catch(() => {});
+        throw err;
+      }
       ta.value = "";
       ta.style.height = "";
+      S.compose = { attr: cp.attr, opt: cp.opt, file: null }; // atribut dibiarkan terpilih untuk pesan berikutnya
+      renderFileInfo();
       if (row) {
         const prev = S.last.get(row.room_id);
         if (!prev || row.id > prev.id) S.last.set(row.room_id, row);
@@ -461,16 +684,37 @@
   }
 
   async function deleteMsg(id) {
+    const m = S.msgs.find((x) => x.id === id);
+    if (!confirm("Hapus pesan ini?")) return;
     try {
       await rpc("delete_chat_message", { p_id: id });
-      S.msgs = S.msgs.filter((m) => m.id !== id);
-      S.emergencies = S.emergencies.filter((m) => m.id !== id);
+      if (m && m.image_path) sb().storage.from(IMG_BUCKET).remove([m.image_path]).catch(() => {});
+      S.msgs = S.msgs.filter((x) => x.id !== id);
+      S.emergencies = S.emergencies.filter((x) => x.id !== id);
       const el = document.querySelector(`[data-mid="${id}"]`);
       if (el) el.remove();
+      renderCount();
       renderList();
     } catch (err) {
       App.toast(err.message);
     }
+  }
+
+  async function copyMsg(id) {
+    const m = S.msgs.find((x) => x.id === id);
+    if (!m) return;
+    const text = `${m.sender_name}: ${m.body}`.trim();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const t = document.createElement("textarea");
+      t.value = text;
+      document.body.appendChild(t);
+      t.select();
+      document.execCommand("copy");
+      t.remove();
+    }
+    App.toast("Pesan disalin");
   }
 
   async function toggleMembers() {
@@ -493,10 +737,11 @@
   async function leaveRoom() {
     const r = S.active;
     if (!r) return;
-    const owner = S.roles.get(r.id) === "owner";
-    const ok = confirm(owner ? `Kamu pemilik “${r.name}”. Menghapusnya juga menghapus semua pesan dan mengeluarkan semua anggota. Lanjutkan?` : `Keluar dari “${r.name}”?`);
+    const owner = isOwnerHere();
+    const ok = confirm(owner ? `Kamu pemilik “${r.name}”. Menghapusnya juga menghapus semua pesan, gambar, dan mengeluarkan semua anggota. Lanjutkan?` : `Keluar dari “${r.name}”?`);
     if (!ok) return;
     try {
+      if (owner && S.attrAvail) await removeRoomImages(r.id); // sebelum jadi bukan anggota, selagi masih berhak menghapus berkas
       await rpc("leave_chat_room", { p_room: r.id });
       S.active = null;
       S.members = null;
@@ -507,6 +752,61 @@
       App.toast(owner ? "Ruang dihapus" : "Kamu sudah keluar");
     } catch (err) {
       App.toast(err.message);
+    }
+  }
+
+  // Hapus semua gambar ruang (folder <ruang>/<pengirim>/<berkas>), sebisanya.
+  async function removeRoomImages(roomId) {
+    try {
+      const st = sb().storage.from(IMG_BUCKET);
+      const users = (await st.list(roomId, { limit: 1000 })).data || [];
+      for (const u of users) {
+        const files = (await st.list(`${roomId}/${u.name}`, { limit: 1000 })).data || [];
+        if (files.length) await st.remove(files.map((f) => `${roomId}/${u.name}/${f.name}`));
+      }
+    } catch {
+      /* gagal menghapus berkas tidak boleh menghalangi penghapusan ruang */
+    }
+  }
+
+  // ── kelola atribut
+  async function attrAction(act, id, form) {
+    const a = S.attrs.find((x) => x.id === id);
+    try {
+      if (act === "add") {
+        const f = form.elements;
+        const opts = f.opts.value.split(",").map((x) => x.trim()).filter(Boolean);
+        await rpc("add_chat_attribute", { p_room: S.active.id, p_name: f.name.value, p_options: opts });
+        f.name.value = f.opts.value = "";
+      } else if (a && act === "rename") {
+        const name = (prompt("Nama baru untuk atribut ini:", a.name) || "").trim();
+        if (!name || name === a.name) return;
+        await rpc("update_chat_attribute", { p_id: a.id, p_name: name, p_options: a.options });
+        S.msgs.forEach((m) => m.attr === a.name && (m.attr = name));
+        if (S.filter.attr === a.name) S.filter.attr = name;
+        if (S.compose.attr === a.name) S.compose.attr = name;
+      } else if (a && act === "opts") {
+        const raw = prompt(`Pilihan ganda untuk “${a.name}” (pisahkan dengan koma; kosongkan = teks bebas):`, a.options.join(", "));
+        if (raw === null) return;
+        const opts = raw.split(",").map((x) => x.trim()).filter(Boolean);
+        await rpc("update_chat_attribute", { p_id: a.id, p_name: a.name, p_options: opts });
+        if (S.compose.attr === a.name) S.compose.opt = null;
+      } else if (a && act === "del") {
+        if (!confirm(`Hapus atribut “${a.name}”? Pesan lama tetap ada, hanya tanpa atribut.`)) return;
+        await rpc("delete_chat_attribute", { p_id: a.id });
+        S.msgs.forEach((m) => m.attr === a.name && ((m.attr = null), (m.attr_option = null)));
+        if (S.filter.attr === a.name) S.filter.attr = null;
+        if (S.compose.attr === a.name) S.compose.attr = S.compose.opt = null;
+      }
+      await loadAttrs();
+      renderFilter();
+      renderAttrChips();
+      renderPanel();
+      paintMsgs(false);
+    } catch (err) {
+      const e = form && form.querySelector('[data-s="err"]');
+      if (e) e.textContent = err.message;
+      else App.toast(err.message);
     }
   }
 
@@ -926,6 +1226,39 @@
       render();
     } else if (act === "older") olderMsgs();
     else if (act === "del") deleteMsg(Number(el.dataset.id));
+    else if (act === "copy") copyMsg(Number(el.dataset.id));
+    else if (act === "reserv") App.setView("booking");
+    else if (act === "down") {
+      const box = document.getElementById("chatMsgs");
+      if (box) box.scrollTo({ top: box.scrollHeight, behavior: "smooth" });
+    } else if (act === "attr-panel") {
+      S.panel = !S.panel;
+      renderPanel();
+    } else if (act === "panel-close") {
+      S.panel = false;
+      renderPanel();
+    } else if (act === "fchip") {
+      S.filter.attr = el.dataset.name || null;
+      renderFilter();
+      paintMsgs(true);
+    } else if (act === "cattr") {
+      const same = S.compose.attr === el.dataset.name;
+      S.compose.attr = same ? null : el.dataset.name;
+      S.compose.opt = null;
+      renderAttrChips();
+    } else if (act === "copt") {
+      S.compose.opt = S.compose.opt === el.dataset.opt ? null : el.dataset.opt;
+      renderAttrChips();
+    } else if (act === "pick-img") {
+      const f = document.getElementById("crFile");
+      if (f) f.click();
+    } else if (act === "rm-img") {
+      S.compose.file = null;
+      renderFileInfo();
+    } else if (/^attr-(opts|rename|del)$/.test(act)) {
+      const row = el.closest("[data-id]");
+      if (row) attrAction(act.slice(5), row.dataset.id);
+    }
     else if (act === "members") toggleMembers();
     else if (act === "leave") leaveRoom();
     else if (act === "invite") {
@@ -948,6 +1281,7 @@
     e.preventDefault();
     const k = form.dataset.s;
     if (k === "wa-form") sendWa();
+    else if (k === "attr-form") attrAction("add", null, form);
     else if (k === "wa-contact-form") addWaContact(form);
     else if (k === "send-form") sendMsg(form);
     else if (k === "sos-form") sendSos(form);
@@ -962,7 +1296,7 @@
   }
 
   function onKeydown(e) {
-    const ta = e.target.closest && e.target.closest(".chat-compose textarea");
+    const ta = e.target.closest && e.target.closest(".cr-compose textarea");
     if (!ta) return;
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
@@ -970,7 +1304,7 @@
     }
   }
   function onInput(e) {
-    const ta = e.target.closest && e.target.closest(".chat-compose textarea");
+    const ta = e.target.closest && e.target.closest(".cr-compose textarea");
     if (!ta) return;
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
@@ -1016,6 +1350,28 @@
   }, true);
   App.pane.addEventListener("click", onPaneClick);
   App.pane.addEventListener("keydown", onKeydown);
+  App.pane.addEventListener("input", (e) => {
+    if (!isMine()) return;
+    if (e.target.dataset.s === "fsearch") {
+      S.filter.q = e.target.value;
+      paintMsgs(true);
+    } else if (e.target.dataset.s === "psearch") {
+      S.panelQ = e.target.value;
+      const pos = e.target.selectionStart;
+      renderPanel();
+      const i = document.querySelector('[data-s="psearch"]');
+      if (i) (i.focus(), i.setSelectionRange(pos, pos));
+    }
+  });
+  App.pane.addEventListener("change", (e) => {
+    if (!isMine() || e.target.id !== "crFile") return;
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!IMG_TYPES[f.type]) return App.toast("Format tidak didukung. Gunakan PNG, JPG, GIF, atau WebP.");
+    S.compose.file = f;
+    renderFileInfo();
+  });
   App.pane.addEventListener("input", onInput);
   window.addEventListener("online", () => S.avail && App.user && refreshAll().then(() => isMine() && repaint()).catch(() => {}));
 

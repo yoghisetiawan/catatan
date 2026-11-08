@@ -134,6 +134,9 @@
     newsStatus: $("#newsStatus"),
     newsRefresh: $("#newsRefresh"),
     fabMic: $("#fabMic"),
+    fabSection: $("#fabSection"),
+    fabShow: $("#fabShow"),
+    fabReset: $("#fabReset"),
     emptyRecBtn: $("#emptyRecBtn"),
     copyBtn: $("#copyBtn"),
     moveBtn: $("#moveBtn"),
@@ -175,7 +178,7 @@
 
   // ---------- State ----------
   let notes = [];
-  const prefs = Object.assign({ theme: null, sort: "updated", collapsed: [], installDismissed: 0, foldersHidden: false }, load(PREFS_KEY, {}));
+  const prefs = Object.assign({ theme: null, sort: "updated", collapsed: [], installDismissed: 0, foldersHidden: false, fab: null, fabHidden: false }, load(PREFS_KEY, {}));
   if (!Array.isArray(prefs.collapsed)) prefs.collapsed = [];
   const state = {
     view: "all", activeId: null, query: "", mode: "edit",
@@ -2576,12 +2579,115 @@
   const modsLogin = () => mods.forEach((m) => m.onLogin && m.onLogin(state.user, sb));
   const modsLogout = () => mods.forEach((m) => m.onLogout && m.onLogout());
 
+  // ---------- Tombol mikrofon melayang: bisa diseret, posisinya diingat ----------
+  let fabMoved = false; // true sesaat setelah seretan, supaya klik berikutnya diabaikan
+
+  function updateFab() {
+    const supported = !!SpeechRec;
+    el.fabMic.classList.toggle("hidden", !supported || prefs.fabHidden);
+    el.fabShow.checked = !prefs.fabHidden;
+    applyFab();
+  }
+
+  // Posisi disimpan sebagai pecahan (0..1) dari ruang gerak, sehingga tetap masuk akal di layar berbeda ukuran.
+  function applyFab() {
+    const b = el.fabMic;
+    if (!prefs.fab || b.classList.contains("hidden")) {
+      b.style.left = b.style.top = b.style.right = b.style.bottom = "";
+      return;
+    }
+    const w = b.offsetWidth || 54;
+    const h = b.offsetHeight || 54;
+    const margin = 8;
+    const maxX = Math.max(margin, window.innerWidth - w - margin);
+    const maxY = Math.max(margin, window.innerHeight - h - margin);
+    b.style.left = Math.round(margin + prefs.fab.x * (maxX - margin)) + "px";
+    b.style.top = Math.round(margin + prefs.fab.y * (maxY - margin)) + "px";
+    b.style.right = b.style.bottom = "auto";
+  }
+
+  function saveFabFromPixels(left, top) {
+    const b = el.fabMic;
+    const margin = 8;
+    const maxX = Math.max(margin + 1, window.innerWidth - b.offsetWidth - margin);
+    const maxY = Math.max(margin + 1, window.innerHeight - b.offsetHeight - margin);
+    prefs.fab = {
+      x: Math.min(1, Math.max(0, (left - margin) / (maxX - margin))),
+      y: Math.min(1, Math.max(0, (top - margin) / (maxY - margin))),
+    };
+    savePrefs();
+    applyFab();
+  }
+
+  function setupFab() {
+    const b = el.fabMic;
+    let drag = null;
+    b.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      const r = b.getBoundingClientRect();
+      drag = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top, moved: false, id: e.pointerId };
+    });
+    b.addEventListener("pointermove", (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dx = e.clientX - drag.sx;
+      const dy = e.clientY - drag.sy;
+      if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        b.setPointerCapture(e.pointerId);
+        b.classList.add("dragging");
+      }
+      const w = b.offsetWidth, h = b.offsetHeight;
+      b.style.left = Math.min(window.innerWidth - w - 4, Math.max(4, drag.ox + dx)) + "px";
+      b.style.top = Math.min(window.innerHeight - h - 4, Math.max(4, drag.oy + dy)) + "px";
+      b.style.right = b.style.bottom = "auto";
+    });
+    const end = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const moved = drag.moved;
+      drag = null;
+      b.classList.remove("dragging");
+      if (moved) {
+        fabMoved = true;
+        setTimeout(() => (fabMoved = false), 350); // batas waktu jaga-jaga bila klik tidak datang
+        saveFabFromPixels(parseFloat(b.style.left), parseFloat(b.style.top));
+      }
+    };
+    b.addEventListener("pointerup", end);
+    b.addEventListener("pointercancel", end);
+    // keyboard: tombol panah menggeser 24px
+    b.addEventListener("keydown", (e) => {
+      const d = { ArrowLeft: [-24, 0], ArrowRight: [24, 0], ArrowUp: [0, -24], ArrowDown: [0, 24] }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      const r = b.getBoundingClientRect();
+      saveFabFromPixels(r.left + d[0], r.top + d[1]);
+    });
+    window.addEventListener("resize", applyFab);
+    el.fabShow.addEventListener("change", () => {
+      prefs.fabHidden = !el.fabShow.checked;
+      savePrefs();
+      updateFab();
+    });
+    el.fabReset.addEventListener("click", () => {
+      prefs.fab = null;
+      prefs.fabHidden = false;
+      savePrefs();
+      updateFab();
+      toast("Tombol mikrofon dikembalikan ke pojok kanan bawah");
+    });
+  }
+
   // ---------- Events ----------
   el.newNoteBtn.addEventListener("click", () => createNote());
   el.emptyNewBtn.addEventListener("click", () => createNote());
   el.recNoteBtn.addEventListener("click", recordNewNote);
   el.recStopBtn.addEventListener("click", stopDictation);
-  el.fabMic.addEventListener("click", recordNewNote);
+  el.fabMic.addEventListener("click", (e) => {
+    if (fabMoved) return void (fabMoved = false, e.preventDefault()); // klik setelah menyeret bukan perintah rekam
+    recordNewNote();
+  });
+  setupFab();
   el.emptyRecBtn.addEventListener("click", recordNewNote);
 
   // Berita
@@ -2601,7 +2707,8 @@
   });
   el.noteList.addEventListener("error", (e) => e.target.tagName === "IMG" && e.target.remove(), true); // gambar berita gagal dimuat
   if (SpeechRec) {
-    el.fabMic.classList.remove("hidden");
+    el.fabSection.classList.remove("hidden");
+    updateFab();
     el.emptyRecBtn.classList.remove("hidden");
     el.recNoteBtn.classList.remove("hidden");
     el.formatBar.querySelector('[data-fmt="mic"]').classList.remove("hidden");

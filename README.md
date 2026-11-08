@@ -25,7 +25,8 @@ tanpa build step dan tanpa server sendiri.
 - **Tampilan koordinasi di Chat room dan Pesan grup**: pesan berupa kartu dengan nama, label peran (PEMILIK/ANGGOTA), **atribut klasifikasi** (mis. Absen, Pengeluaran; bisa pilihan ganda), gambar, tombol salin dan hapus, filter menurut atribut, pencarian, dan panel **Kelola Atribut** untuk pemilik ruang
 - Di layar lebar, Chat room dan Pesan grup langsung membuka ruang terakhir yang aktif; bila belum punya ruang, panel kanan menampilkan sambutan dengan tombol **Buat ruang koordinasi**
 - **Pesan WhatsApp Cepat** (menu Pesan darurat): pilih kontak tersimpan atau ketik nomor, tulis pesan (ada templat darurat dan opsi tautan lokasi), lalu buka WhatsApp dengan pesan siap kirim. Kontak yang sama dipakai di halaman Pengingat
-- **Chat room** (ruang terbuka), **Pesan grup** (privat, masuk dengan kode undangan), dan **Pesan darurat** (pesan berprioritas ke grup: alarm + notifikasi di perangkat anggota, plus lokasi bila diizinkan), semuanya realtime
+- **Pesan grup**: pesan terjadwal ke grup WhatsApp (judul, nama grup, isi, jadwal sekali/harian/mingguan/bulanan, aktif/jeda, hitungan terkirim), tab **Kirim cepat**, dan tab **Impor chat** (ekspor chat WhatsApp `.txt` jadi satu catatan). Catatan tidak mengirim otomatis: saat jadwal tiba muncul alarm dan tombol yang membuka WhatsApp dengan pesan siap kirim
+- **Chat room** (tab *Ruang terbuka* dan *Grup privat* dengan kode undangan) dan **Pesan darurat** (pesan berprioritas ke grup: alarm + notifikasi di perangkat anggota, plus lokasi bila diizinkan), semuanya realtime
 - **Reservasi meja**: pemilik tempat membuat tempat, meja, dan jam buka lalu membagikan tautan pemesanan; pelanggan memilih tanggal, jam, dan meja; bentrok dicegah di database
 - Tombol **Salin**, **Pindahkan ke folder**, **mode fokus**, **Gabung catatan** (gambar ikut disalin), daftar dikelompokkan per waktu, ikon catatan suara
 - Ajakan **Instal aplikasi** (PWA) di Chrome/Edge/Android, dan petunjuk untuk iPhone/iPad
@@ -45,6 +46,7 @@ catatan/
 │   ├── social.js        # Chat room, Pesan grup, Pesan darurat
 │   ├── booking.js       # Reservasi meja
 │   ├── reminders.js     # halaman Pengingat & Alarm (umum, jobdesk, kontak)
+│   ├── wagroups.js      # Pesan grup: pesan terjadwal WhatsApp, kirim cepat, impor chat
 │   ├── privasi.html     # Kebijakan Privasi (ditautkan dari form login)
 │   ├── ketentuan.html   # Ketentuan Layanan
 │   ├── sw.js            # service worker (offline / PWA)
@@ -59,6 +61,7 @@ catatan/
 │   ├── migrations/004_chat_darurat_reservasi.sql  # chat, grup, darurat, reservasi meja
 │   ├── migrations/005_pengingat_kontak.sql  # pengingat umum, jobdesk, kontak
 │   ├── migrations/006_chat_atribut_gambar.sql  # atribut pesan + gambar di chat
+│   ├── migrations/007_pesan_terjadwal.sql  # pesan terjadwal ke grup WhatsApp
 │   └── email-templates/               # template email berbahasa Indonesia (tempel manual di Supabase)
 └── vercel.json          # konfigurasi hosting Vercel
 ```
@@ -78,6 +81,8 @@ catatan/
    untuk **pengingat mandiri, jobdesk, dan kontak** (tanpa migrasi 005, halamannya menampilkan petunjuk).
    Lalu [`supabase/migrations/006_chat_atribut_gambar.sql`](supabase/migrations/006_chat_atribut_gambar.sql)
    untuk **atribut pesan dan gambar di chat** (tanpa migrasi 006, chat tetap berfungsi tanpa atribut dan gambar).
+   Lalu [`supabase/migrations/007_pesan_terjadwal.sql`](supabase/migrations/007_pesan_terjadwal.sql)
+   untuk **pesan terjadwal ke grup WhatsApp** (tanpa migrasi 007, tab Kirim cepat dan Impor chat tetap bisa dipakai).
 3. **Isi konfigurasi:** buka **Project Settings → API Keys**, salin *Project URL* dan kunci
    **anon / publishable** ke `public/config.js`:
    ```js
@@ -223,6 +228,14 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
 - Pesan **tidak dienkripsi ujung ke ujung**: administrator proyek Supabase secara teknis dapat membacanya. Hapus pesan lewat tombol "hapus" hanya terlihat di perangkat lain setelah memuat ulang
   (peristiwa DELETE sengaja tidak dilanggan, karena tidak bisa disaring per pengguna).
 
+### Pesan grup (WhatsApp terjadwal)
+
+- Pesan tersimpan di tabel `wa_scheduled` (hanya pemiliknya yang bisa mengaksesnya; batas 200 per pengguna). Kolom `send_at` adalah jadwal berikutnya; pesan berulang maju sendiri setelah dikirim atau dilewati.
+- **Tidak ada pengiriman otomatis.** Mengirim pesan ke grup WhatsApp secara otomatis butuh bot atau WhatsApp Business API plus server. Di sini, selama Catatan terbuka, alarm berbunyi saat jadwal tiba
+  dan tombol **Buka WhatsApp** membuka `wa.me/?text=…` sehingga kamu memilih grup tujuan dan menekan kirim sendiri. Membuka WhatsApp dihitung sebagai "terkirim" (aplikasi tidak bisa memastikan pesannya benar-benar dikirim).
+- **Impor chat** membaca ekspor chat WhatsApp (`.txt`, format Android dan iPhone) di browser tanpa mengunggahnya, lalu menyimpannya sebagai satu catatan per tanggal (tag `chat-wa`).
+- Grup privat dengan kode undangan (yang dipakai Pesan darurat) kini ada di **Chat room**, tab *Grup privat*.
+
 ### Atribut dan gambar di chat
 
 - Pemilik ruang membuat **atribut** (nama, dengan atau tanpa **pilihan ganda**) lewat tombol *Kelola Atribut*. Anggota memilih atribut (dan opsinya) saat mengirim pesan, lalu semua anggota bisa menyaring pesan menurut atribut atau mencari teks.
@@ -247,7 +260,7 @@ Pengiriman dilakukan di aplikasi WhatsApp milikmu lewat tautan `wa.me`; Catatan 
 
 ### Pengujian SQL
 
-Aturan di migrasi 004, 005, dan 006 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
+Aturan di migrasi 004, 005, 006, dan 007 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
 akses lintas pengguna, kode undangan, batas laju, pesan darurat, bentrok jadwal, jam buka, batas reservasi, dan keamanan fungsi. Migrasi juga aman dijalankan dua kali.
 
 ### Berita terkini

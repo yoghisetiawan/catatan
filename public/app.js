@@ -827,7 +827,7 @@
     el.listTitle.textContent = viewTitle();
     document.body.classList.toggle("view-news", state.view === "news");
     document.body.classList.toggle("view-mod", isModView());
-    document.body.classList.toggle("view-page", state.view === "reminders" || state.view === "emergency"); // halaman penuh tanpa panel editor
+    document.body.classList.toggle("view-page", ["reminders", "emergency", "groups"].includes(state.view)); // halaman penuh tanpa panel editor
 
     if (isModView()) {
       /* modul mengelola isi daftarnya sendiri */
@@ -2560,6 +2560,18 @@
       if (n) setRemind(n, null);
     },
     formatRemind,
+    // Buat catatan baru dari modul lain (mis. impor chat); mengembalikan id catatan.
+    addNote({ title, content, tags }) {
+      const now = Date.now();
+      const n = {
+        id: uid(), title: String(title || "").slice(0, 140), content: String(content || ""), tags: (tags || []).slice(0, 20), color: "",
+        pinned: false, trashed: false, createdAt: now, updatedAt: now, folderId: null, remindAt: null,
+      };
+      notes.unshift(n);
+      persist(n);
+      renderList();
+      return n.id;
+    },
   };
   const modsLogin = () => mods.forEach((m) => m.onLogin && m.onLogin(state.user, sb));
   const modsLogout = () => mods.forEach((m) => m.onLogout && m.onLogout());

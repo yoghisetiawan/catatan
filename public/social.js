@@ -5,7 +5,7 @@
   const App = window.CatatanApp;
   if (!App) return;
   const esc = App.escapeHtml;
-  const VIEWS = ["chat", "groups", "emergency"];
+  const VIEWS = ["chat", "emergency"]; // "groups" (Pesan grup) kini halaman pesan terjadwal WhatsApp (wagroups.js); grup privat Catatan ada di Chat room
 
   const S = {
     avail: null, // null = belum dicek, false = migrasi 004 belum dijalankan
@@ -29,6 +29,7 @@
     alerts: [],
     sos: { sel: null, msg: "Saya butuh bantuan!", loc: true, busy: false, note: "" },
     sosOpen: false,
+    chatKind: "room", // di Chat room: 'room' (ruang terbuka) atau 'group' (grup privat)
     attrs: [],
     attrAvail: null,
     roleByName: new Map(),
@@ -48,7 +49,7 @@
   const readKey = () => `catatan.chat.read.${me()}`;
   const emKey = () => `catatan.chat.em.${me()}`;
   const isMine = () => VIEWS.includes(App.view());
-  const kindOf = (view) => (view === "chat" ? "room" : "group");
+  const kindOf = (view) => (view === "chat" ? S.chatKind : "group");
 
   async function rpc(name, args) {
     const { data, error } = await sb().rpc(name, args);
@@ -162,8 +163,7 @@
       if (!r) continue;
       r.kind === "room" ? (room += n) : (group += n);
     }
-    App.setCount("chat", room);
-    App.setCount("groups", group);
+    App.setCount("chat", room + group);
     App.setCount("emergency", S.emergencies.filter((m) => m.user_id !== me() && m.id > S.seenEm).length);
   }
 
@@ -308,6 +308,8 @@
 
     const kind = kindOf(view);
     let html = "";
+    const unreadOf = (k) => [...S.unread].reduce((n, [rid, c]) => n + ((roomById(rid) || {}).kind === k ? c : 0), 0);
+    html += `<div class="mod-seg"><button data-s="kind" data-kind="room" class="${kind === "room" ? "active" : ""}">Ruang terbuka${unreadOf("room") ? ` (${unreadOf("room")})` : ""}</button><button data-s="kind" data-kind="group" class="${kind === "group" ? "active" : ""}">Grup privat${unreadOf("group") ? ` (${unreadOf("group")})` : ""}</button></div>`;
     if (!S.profile || S.form === "name") html += nameForm();
     if (S.profile) {
       html += `<div class="mod-actions">
@@ -1168,7 +1170,8 @@
         closeAlert();
         if (m) {
           const r = roomById(m.room_id);
-          App.setView("groups");
+          S.chatKind = "group";
+          App.setView("chat");
           if (r) openRoom(r.id);
         }
       } else closeAlert();
@@ -1234,7 +1237,16 @@
       S.form = null;
       renderList();
     } else if (act === "goto-groups") {
-      App.setView("groups");
+      S.chatKind = "group";
+      App.setView("chat");
+    } else if (act === "kind") {
+      S.chatKind = el.dataset.kind === "group" ? "group" : "room";
+      S.active = null;
+      S.form = null;
+      stopPoll();
+      App.setMainOpen(false);
+      render();
+      autoOpen();
     }
   }
 

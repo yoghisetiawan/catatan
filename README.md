@@ -23,6 +23,7 @@ tanpa build step dan tanpa server sendiri.
 - **Berita terkini**: headline dari RSS publik (Antara, CNN Indonesia, BBC Indonesia, CNBC Indonesia, Republika), bisa dicari dan disimpan ke catatan (tag `berita`)
 - Tombol **mikrofon melayang** dan tombol *Input Suara* di layar sambutan untuk merekam dari mana saja
 - **Tampilan koordinasi di Chat room dan Pesan grup**: pesan berupa kartu dengan nama, label peran (PEMILIK/ANGGOTA), **atribut klasifikasi** (mis. Absen, Pengeluaran; bisa pilihan ganda), gambar, tombol salin dan hapus, filter menurut atribut, pencarian, dan panel **Kelola Atribut** untuk pemilik ruang
+- Di layar lebar, Chat room dan Pesan grup langsung membuka ruang terakhir yang aktif; bila belum punya ruang, panel kanan menampilkan sambutan dengan tombol **Buat ruang koordinasi**
 - **Pesan WhatsApp Cepat** (menu Pesan darurat): pilih kontak tersimpan atau ketik nomor, tulis pesan (ada templat darurat dan opsi tautan lokasi), lalu buka WhatsApp dengan pesan siap kirim. Kontak yang sama dipakai di halaman Pengingat
 - **Chat room** (ruang terbuka), **Pesan grup** (privat, masuk dengan kode undangan), dan **Pesan darurat** (pesan berprioritas ke grup: alarm + notifikasi di perangkat anggota, plus lokasi bila diizinkan), semuanya realtime
 - **Reservasi meja**: pemilik tempat membuat tempat, meja, dan jam buka lalu membagikan tautan pemesanan; pelanggan memilih tanggal, jam, dan meja; bentrok dicegah di database

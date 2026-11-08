@@ -112,7 +112,10 @@
     await refreshAll();
     if (id !== S.loadId) return;
     subscribe();
-    if (isMine()) render();
+    if (isMine()) {
+      render();
+      autoOpen();
+    }
   }
 
   function onLogout() {
@@ -239,7 +242,17 @@
     }
     render();
     if (view === "emergency") loadWaContacts().then(() => isMine() && renderWaRight());
-    if (S.avail !== false && App.user && S.avail !== null) refreshAll().then(() => isMine() && repaint()).catch(() => {});
+    if (S.avail !== false && App.user && S.avail !== null) refreshAll().then(() => isMine() && (repaint(), autoOpen())).catch(() => {});
+    else autoOpen();
+  }
+  // Di layar lebar, langsung buka ruang terakhir yang aktif (seperti aplikasi koordinasi satu-grup).
+  function autoOpen() {
+    const view = App.view();
+    if (!isMine() || view === "emergency" || S.active || S.avail !== true || window.innerWidth <= 760) return;
+    const mine = S.rooms
+      .filter((r) => r.kind === kindOf(view) && S.joined.has(r.id))
+      .sort((a, b) => ((S.last.get(b.id) || {}).id || 0) - ((S.last.get(a.id) || {}).id || 0) || b.created_at - a.created_at);
+    if (mine[0]) openRoom(mine[0].id);
   }
   function leave() {
     S.active = null;
@@ -335,9 +348,20 @@
     if (view === "emergency") return void (pane.innerHTML = ""); // halaman penuh: semuanya ada di daftar
     if (S.avail === false) return void (pane.innerHTML = `<div class="mod-empty">${migrationHint}</div>`);
     if (!S.active) {
-      pane.innerHTML = `<div class="mod-empty"><h3>${view === "chat" ? "Chat room" : "Pesan grup"}</h3><p>${
-        view === "chat" ? "Pilih ruang di sebelah kiri, atau buat ruang baru untuk ngobrol dengan pengguna Catatan lainnya." : "Pilih grup di sebelah kiri. Grup bersifat privat: hanya anggota yang bisa membaca pesannya."
-      }</p></div>`;
+      const kind = kindOf(view);
+      const mineCount = S.rooms.filter((r) => r.kind === kind && S.joined.has(r.id)).length;
+      pane.innerHTML = `<div class="cr-hero">
+        <span class="cr-hero-ico">${I.group}</span>
+        <h2>${kind === "room" ? "Ruang koordinasi tim" : "Grup koordinasi"}</h2>
+        <p>${mineCount ? "Pilih ruang di sebelah kiri untuk membuka percakapan." : kind === "room" ? "Buat ruang untuk berkoordinasi dengan timmu: laporan harian, absen, belanja, dan lainnya, semuanya terkumpul rapi dalam satu percakapan." : "Buat grup privat lalu undang anggotanya dengan kode. Hanya anggota yang bisa membaca pesannya."}</p>
+        <ul class="cr-hero-list">
+          <li>${I.tag}<span><b>Atribut klasifikasi</b> pada setiap pesan (mis. Absen, Pengeluaran, Belanja Pasar), bisa pilihan ganda</span></li>
+          <li>${I.funnel}<span><b>Filter dan pencarian</b> pesan menurut atribut atau kata</span></li>
+          <li>${I.img}<span><b>Kirim gambar</b> seperti bukti transfer atau foto laporan</span></li>
+          <li>${I.copy}<span><b>Salin dan hapus</b> pesan, serta tombol cepat ke Reservasi Meja</span></li>
+        </ul>
+        ${S.profile ? `<button class="cr-hero-btn" data-s="hero-new">＋ ${kind === "room" ? "Buat ruang koordinasi" : "Buat grup baru"}</button>` : '<p class="mod-note">Pilih nama tampilan dulu di kolom kiri.</p>'}
+      </div>`;
       App.setMainOpen(false);
       return;
     }
@@ -1224,6 +1248,11 @@
       stopPoll();
       App.setMainOpen(false);
       render();
+    } else if (act === "hero-new") {
+      S.form = kindOf(App.view());
+      renderList();
+      const i = App.list.querySelector('[data-s="create-form"] input[name="name"]');
+      if (i) i.focus();
     } else if (act === "older") olderMsgs();
     else if (act === "del") deleteMsg(Number(el.dataset.id));
     else if (act === "copy") copyMsg(Number(el.dataset.id));

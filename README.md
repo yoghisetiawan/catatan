@@ -22,6 +22,7 @@ tanpa build step dan tanpa server sendiri.
 - **Rekam suara**: tombol *Rekam* membuat catatan dari ucapan (bahasa Indonesia); tombol mikrofon di toolbar menyisipkan dikte ke catatan yang sedang dibuka
 - **Berita terkini**: headline dari RSS publik (Antara, CNN Indonesia, BBC Indonesia, CNBC Indonesia, Republika), bisa dicari dan disimpan ke catatan (tag `berita`)
 - Tombol **mikrofon melayang** dan tombol *Input Suara* di layar sambutan untuk merekam dari mana saja
+- **Pesan WhatsApp Cepat** (menu Pesan darurat): pilih kontak tersimpan atau ketik nomor, tulis pesan (ada templat darurat dan opsi tautan lokasi), lalu buka WhatsApp dengan pesan siap kirim. Kontak yang sama dipakai di halaman Pengingat
 - **Chat room** (ruang terbuka), **Pesan grup** (privat, masuk dengan kode undangan), dan **Pesan darurat** (pesan berprioritas ke grup: alarm + notifikasi di perangkat anggota, plus lokasi bila diizinkan), semuanya realtime
 - **Reservasi meja**: pemilik tempat membuat tempat, meja, dan jam buka lalu membagikan tautan pemesanan; pelanggan memilih tanggal, jam, dan meja; bentrok dicegah di database
 - Tombol **Salin**, **Pindahkan ke folder**, **mode fokus**, **Gabung catatan** (gambar ikut disalin), daftar dikelompokkan per waktu, ikon catatan suara
@@ -212,10 +213,16 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
   Pemilik bisa menghapus pesan siapa pun di ruangnya dan menghapus ruang (dengan keluar sebagai pemilik).
 - Semua penulisan data lewat fungsi database (`send_chat_message`, `join_chat_group`, dst.) yang memeriksa keanggotaan, panjang pesan, dan batas laju
   (maks. 20 pesan per 30 detik, 10 pesan darurat per 10 menit). Tabel hanya bisa dibaca langsung, dan dibatasi RLS ke ruang yang diikuti.
-- **Pesan darurat** hanya untuk grup. Penerima yang sedang membuka Catatan mendengar alarm dan melihat lokasi (tautan OpenStreetMap) bila pengirim mengizinkan lokasi.
+- **Alarm darurat ke grup** (bagian bawah halaman Pesan darurat) hanya untuk grup. Penerima yang sedang membuka Catatan mendengar alarm dan melihat lokasi (tautan OpenStreetMap) bila pengirim mengizinkan lokasi.
   Ini **bukan layanan darurat resmi**: tidak ada pengiriman SMS/telepon dan tidak ada notifikasi saat aplikasi tertutup. Untuk keadaan darurat sungguhan hubungi 112.
 - Pesan **tidak dienkripsi ujung ke ujung**: administrator proyek Supabase secara teknis dapat membacanya. Hapus pesan lewat tombol "hapus" hanya terlihat di perangkat lain setelah memuat ulang
   (peristiwa DELETE sengaja tidak dilanggan, karena tidak bisa disaring per pengguna).
+
+### Pesan WhatsApp Cepat
+
+Halaman Pesan darurat berisi formulir WhatsApp (penerima dari kontak tersimpan atau nomor yang diketik, isi pesan, tautan lokasi opsional) dan daftar kontak.
+Pengiriman dilakukan di aplikasi WhatsApp milikmu lewat tautan `wa.me`; Catatan tidak mengirim pesan sendiri dan tidak melihat isinya. Kontak disimpan di tabel `contacts`
+(migrasi 005); tanpa migrasi itu, nomor tetap bisa diketik langsung tetapi daftar kontak tidak tersedia.
 
 ### Reservasi meja
 

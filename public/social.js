@@ -28,6 +28,9 @@
     seenEm: 0,
     alerts: [],
     sos: { sel: null, msg: "Saya butuh bantuan!", loc: true, busy: false, note: "" },
+    sosOpen: false,
+    // Pesan WhatsApp Cepat (halaman Pesan Darurat)
+    wa: { to: "", pick: null, msg: "", loc: false, contacts: [], cAvail: null, err: "", cerr: "", sug: false, busy: false },
     channel: null,
     poll: null,
     loadId: 0,
@@ -73,6 +76,7 @@
       read: {}, active: null, msgs: [], oldest: 0, newest: 0, hasMore: false, members: null, form: null, emergencies: [], seenEm: 0, alerts: [],
     });
     S.sos.sel = null;
+    Object.assign(S.wa, { to: "", pick: null, msg: "", loc: false, contacts: [], cAvail: null, err: "", cerr: "", sug: false, busy: false });
     closeAlert(true);
     updateBadges();
   }
@@ -86,11 +90,12 @@
     } catch {
       S.read = {};
     }
+    loadWaContacts().then(() => id === S.loadId && App.view() === "emergency" && renderWaRight());
     const { data, error } = await sb().from("chat_profiles").select("display_name").maybeSingle();
     if (id !== S.loadId) return;
     if (error) {
       S.avail = /^(42P01|PGRST205)$/.test(error.code || "") ? false : S.avail;
-      if (S.avail === false && isMine()) render();
+      if (S.avail === false && isMine()) repaint();
       return;
     }
     S.avail = true;
@@ -205,7 +210,13 @@
     }
     if (row.kind === "emergency" && !mine) alertEmergency(row);
     updateBadges();
-    if (isMine() && !viewing) renderList();
+    if (isMine() && !viewing) repaint();
+  }
+
+  // Di halaman Pesan Darurat hanya bagian alarm-grup yang digambar ulang, agar isian WhatsApp tidak terganggu.
+  function repaint() {
+    if (App.view() === "emergency") renderSosBox();
+    else renderList();
   }
 
   // ───────────────────────── render: umum
@@ -217,7 +228,8 @@
       updateBadges();
     }
     render();
-    if (S.avail !== false && App.user && S.avail !== null) refreshAll().then(() => isMine() && renderList()).catch(() => {});
+    if (view === "emergency") loadWaContacts().then(() => isMine() && renderWaRight());
+    if (S.avail !== false && App.user && S.avail !== null) refreshAll().then(() => isMine() && repaint()).catch(() => {});
   }
   function leave() {
     S.active = null;
@@ -267,9 +279,9 @@
     const view = App.view();
     if (!VIEWS.includes(view)) return;
     const box = App.list;
+    if (view === "emergency") return renderEmergencyPage(box);
     if (S.avail === false) return void (box.innerHTML = migrationHint);
     if (S.avail === null) return void (box.innerHTML = '<div class="mod-note">Memuat…</div>');
-    if (view === "emergency") return renderEmergency(box);
 
     const kind = kindOf(view);
     let html = "";
@@ -310,11 +322,8 @@
     const view = App.view();
     if (!VIEWS.includes(view)) return;
     const pane = App.pane;
+    if (view === "emergency") return void (pane.innerHTML = ""); // halaman penuh: semuanya ada di daftar
     if (S.avail === false) return void (pane.innerHTML = `<div class="mod-empty">${migrationHint}</div>`);
-    if (view === "emergency") {
-      pane.innerHTML = `<div class="mod-empty"><h3>🚨 Pesan darurat</h3><p>Kirim pesan berprioritas ke grup keluarga atau timmu. Anggota yang sedang membuka Catatan mendengar alarm dan melihat lokasimu (bila kamu izinkan).</p><p>Untuk keadaan darurat yang mengancam nyawa, hubungi <b>112</b> lebih dulu.</p></div>`;
-      return;
-    }
     if (!S.active) {
       pane.innerHTML = `<div class="mod-empty"><h3>${view === "chat" ? "Chat room" : "Pesan grup"}</h3><p>${
         view === "chat" ? "Pilih ruang di sebelah kiri, atau buat ruang baru untuk ngobrol dengan pengguna Catatan lainnya." : "Pilih grup di sebelah kiri. Grup bersifat privat: hanya anggota yang bisa membaca pesannya."
@@ -548,12 +557,20 @@
   }
 
   // ───────────────────────── pesan darurat
+  function renderSosBox() {
+    const box = document.getElementById("sosBox");
+    if (!box) return;
+    if (S.avail === false) return void (box.innerHTML = migrationHint);
+    if (S.avail === null) return void (box.innerHTML = '<div class="mod-note">Memuat…</div>');
+    renderEmergency(box);
+  }
+
   function renderEmergency(box) {
     let html = "";
     if (!S.profile || S.form === "name") html += nameForm();
     const groups = S.rooms.filter((r) => r.kind === "group" && S.joined.has(r.id));
     const picked = S.sos.sel || new Set(groups.map((g) => g.id)); // belum diubah pengguna = semua grup
-    html += `<div class="mod-actions"><a class="btn-secondary" href="tel:112" style="text-decoration:none;display:inline-flex;align-items:center">📞 Telepon 112</a>${S.profile ? `<button class="mini-btn" data-s="rename">Aku: ${esc(S.profile.display_name)}</button>` : ""}</div>`;
+    html += S.profile ? `<div class="mod-actions"><button class="mini-btn" data-s="rename">Aku: ${esc(S.profile.display_name)}</button></div>` : "";
     if (S.profile) {
       if (!groups.length) {
         html += `<div class="mod-form"><div class="mod-note" style="padding:0">Pesan darurat dikirim ke grupmu. Kamu belum punya grup: buat grup keluarga atau tim, lalu undang anggotanya dengan kode.</div><button class="btn-primary" data-s="goto-groups">Buka Pesan grup</button></div>`;
@@ -584,6 +601,186 @@
     box.innerHTML = html;
   }
 
+  // ───────────────────────── Pesan WhatsApp Cepat (halaman Pesan Darurat)
+  // WhatsApp tidak dikirim oleh server: tombol membuka WhatsApp dengan pesan siap kirim (wa.me).
+  const TEMPLATES = ["Saya butuh bantuan, tolong hubungi saya sekarang!", "Saya dalam keadaan darurat. Ini lokasi saya.", "Saya baik-baik saja, terima kasih."];
+
+  function normalizePhone(raw) {
+    let d = String(raw || "").replace(/[^0-9+]/g, "");
+    if (d.startsWith("+")) d = d.slice(1);
+    else if (d.startsWith("00")) d = d.slice(2);
+    else if (d.startsWith("0")) d = "62" + d.slice(1);
+    return /^[0-9]{6,16}$/.test(d) ? d : "";
+  }
+  const showPhone = (p) => (p && p.startsWith("62") ? "0" + p.slice(2) : p || "");
+  const waContact = (id) => S.wa.contacts.find((c) => c.id === id) || null;
+
+  async function loadWaContacts() {
+    if (!App.user) return;
+    const { data, error } = await sb().from("contacts").select("*").order("name", { ascending: true }).limit(250);
+    if (error) {
+      if (/^(42P01|PGRST205)$/.test(error.code || "")) S.wa.cAvail = false;
+      return;
+    }
+    S.wa.cAvail = true;
+    S.wa.contacts = data || [];
+    if (S.wa.pick && !waContact(S.wa.pick)) S.wa.pick = null;
+  }
+
+  function renderEmergencyPage(box) {
+    const w = S.wa;
+    box.innerHTML = `
+      <div class="rem-head">
+        <div><h1><span style="color:#3cb371">💬</span> Pesan WhatsApp Cepat</h1>
+          <p>Kirim pesan darurat atau obrolan cepat secara langsung menggunakan daftar kontak tersimpan.</p></div>
+        <div class="rem-notif"><a class="btn-secondary" href="tel:112" style="text-decoration:none;display:inline-flex;align-items:center;padding:8px 16px">📞 Telepon 112</a></div>
+      </div>
+      <div class="rem-grid wa-grid">
+        <form class="wa-form" data-s="wa-form" autocomplete="off">
+          <div class="wa-field"><label class="wa-label" for="waTo">Nomor WhatsApp penerima</label>
+            <div class="wa-combo"><input id="waTo" name="to" placeholder="Cari nama kontak atau ketik nomor telepon…" value="${esc(w.to)}" /><div class="wa-sug hidden" id="waSug"></div></div></div>
+          <div class="wa-field"><label class="wa-label" for="waMsg">Isi pesan WhatsApp</label>
+            <textarea id="waMsg" name="msg" rows="7" maxlength="1000" placeholder="Tulis pesan kustom atau pesan darurat Anda di sini…">${esc(w.msg)}</textarea>
+            <div class="wa-tpl">${TEMPLATES.map((t, i) => `<button type="button" class="mini-btn" data-s="wa-tpl" data-i="${i}">${esc(t.length > 34 ? t.slice(0, 34) + "…" : t)}</button>`).join("")}</div>
+            <label class="check wa-loc"><input type="checkbox" name="loc" data-s="wa-loc" ${w.loc ? "checked" : ""} /> Sertakan lokasiku (tautan peta; browser akan meminta izin)</label></div>
+          <div class="rem-err" id="waErr">${esc(w.err)}</div>
+          <button class="wa-send" type="submit" ${w.busy ? "disabled" : ""}>${w.busy ? "Menyiapkan…" : "➤ Kirim Pesan Sekarang"}</button>
+          <p class="mod-note" style="padding:0">Tombol ini membuka WhatsApp dengan pesan yang sudah terisi; kamu tinggal menekan kirim di sana. Catatan tidak mengirim pesan sendiri.</p>
+        </form>
+        <div class="rem-card-form wa-right" id="waRight"></div>
+      </div>
+      <details class="sos-details" id="sosDetails" ${S.sosOpen ? "open" : ""}>
+        <summary>🚨 Alarm darurat ke grup Catatan <small>(berbunyi di aplikasi anggota grup)</small></summary>
+        <div id="sosBox"></div>
+      </details>`;
+    renderWaRight();
+    renderSosBox();
+  }
+
+  function renderWaRight() {
+    const box = document.getElementById("waRight");
+    if (!box) return;
+    const w = S.wa;
+    if (w.cAvail === false) {
+      box.innerHTML = `<h2 class="wa-h">👤 Kontak tersimpan</h2><div class="mod-note" style="padding:0">Menyimpan kontak butuh migrasi database 005 (<b>supabase/migrations/005_pengingat_kontak.sql</b>). Sementara itu kamu tetap bisa mengetik nomor langsung di sebelah kiri.</div>`;
+      return;
+    }
+    box.innerHTML = `
+      <h2 class="wa-h">👤＋ Tambah Kontak Baru</h2>
+      <form data-s="wa-contact-form" class="wa-addform">
+        <input name="name" placeholder="Nama Kontak" maxlength="60" required />
+        <div class="wa-addrow"><input name="phone" placeholder="Nomor WA (contoh: 0812…)" maxlength="20" inputmode="tel" required /><button class="wa-add" type="submit">Tambah</button></div>
+        <div class="rem-err">${esc(w.cerr)}</div>
+      </form>
+      <hr class="wa-hr" />
+      <h2 class="wa-h">👥 Daftar Kontak Tersimpan (${w.contacts.length})</h2>
+      <div class="wa-contacts">${
+        w.contacts.length
+          ? w.contacts
+              .map(
+                (c) => `<div class="wa-contact${w.pick === c.id ? " picked" : ""}" data-s="wa-pick" data-id="${esc(c.id)}" tabindex="0" role="button" title="Pilih sebagai penerima">
+                  <span class="wa-ava">${esc((c.name.replace(/[^\p{L}\p{N}]/gu, "").slice(0, 2) || "?").toUpperCase())}</span>
+                  <span class="wa-cinfo"><b>${esc(c.name)}</b><small>${c.phone ? esc(showPhone(c.phone)) : "Tanpa nomor"}</small></span>
+                  <button type="button" class="icon-btn" data-s="wa-del" data-id="${esc(c.id)}" title="Hapus kontak" aria-label="Hapus kontak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div>`
+              )
+              .join("")
+          : '<div class="mod-note">Belum ada kontak tersimpan.</div>'
+      }</div>`;
+  }
+
+  function renderSug() {
+    const box = document.getElementById("waSug");
+    if (!box) return;
+    const q = S.wa.to.trim().toLowerCase();
+    const hits = S.wa.contacts.filter((c) => !S.wa.pick && c.phone && (!q || c.name.toLowerCase().includes(q) || showPhone(c.phone).includes(q.replace(/\D/g, "") || "\u0000"))).slice(0, 6);
+    box.classList.toggle("hidden", !(S.wa.sug && hits.length));
+    box.innerHTML = hits.map((c) => `<button type="button" data-s="wa-sug-pick" data-id="${esc(c.id)}"><b>${esc(c.name)}</b><small>${esc(showPhone(c.phone))}</small></button>`).join("");
+  }
+
+  function pickContact(id) {
+    const c = waContact(id);
+    if (!c) return;
+    S.wa.pick = id;
+    S.wa.to = c.phone ? `${c.name} · ${showPhone(c.phone)}` : c.name;
+    S.wa.sug = false;
+    const inp = document.getElementById("waTo");
+    if (inp) inp.value = S.wa.to;
+    renderSug();
+    renderWaRight();
+  }
+
+  async function sendWa() {
+    const w = S.wa;
+    const err = (t) => {
+      w.err = t;
+      const e = document.getElementById("waErr");
+      if (e) e.textContent = t;
+    };
+    err("");
+    let phone = "";
+    if (w.pick) {
+      phone = (waContact(w.pick) || {}).phone || "";
+      if (!phone) return err("Kontak ini belum punya nomor WhatsApp.");
+    } else phone = normalizePhone(w.to);
+    if (!phone) return err("Isi nomor WhatsApp yang valid (mis. 08123456789) atau pilih dari daftar kontak.");
+    const msg = w.msg.trim();
+    if (!msg) return err("Isi pesan dulu.");
+    let win = null;
+    if (w.loc) {
+      win = window.open("", "_blank"); // dibuka sekarang (saat klik) agar tidak diblokir pop-up, diarahkan setelah lokasi didapat
+      if (win) win.opener = null;
+      w.busy = true;
+      document.querySelector(".wa-send") && (document.querySelector(".wa-send").disabled = true);
+    }
+    let text = msg;
+    if (w.loc) {
+      const pos = await getPosition();
+      if (pos) text += `\n📍 ${mapLink(pos.lat, pos.lng)}`;
+      else App.toast("Lokasi tidak tersedia. Pesan disiapkan tanpa lokasi.");
+      w.busy = false;
+      const b = document.querySelector(".wa-send");
+      if (b) b.disabled = false;
+    }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+    if (win) win.location.href = url;
+    else if (!window.open(url, "_blank", "noopener,noreferrer")) err("Browser memblokir pop-up. Izinkan pop-up untuk situs ini lalu coba lagi.");
+  }
+
+  async function addWaContact(form) {
+    const f = form.elements;
+    const w = S.wa;
+    w.cerr = "";
+    const phone = normalizePhone(f.phone.value);
+    if (!phone) {
+      w.cerr = "Nomor tidak valid. Contoh: 08123456789 atau +628123456789.";
+      return renderWaRight();
+    }
+    const { data, error } = await sb().from("contacts").insert({ name: f.name.value.trim(), phone }).select().single();
+    if (error) {
+      w.cerr = !navigator.onLine ? "Sambungkan ke internet untuk menyimpan." : error.message;
+      return renderWaRight();
+    }
+    w.contacts.push(data);
+    w.contacts.sort((a, b) => a.name.localeCompare(b.name, "id"));
+    renderWaRight();
+    App.toast("Kontak disimpan");
+  }
+
+  async function deleteWaContact(id) {
+    const c = waContact(id);
+    if (!c || !confirm(`Hapus kontak “${c.name}”?`)) return;
+    const { error } = await sb().from("contacts").delete().eq("id", id);
+    if (error) return App.toast(error.message);
+    S.wa.contacts = S.wa.contacts.filter((x) => x.id !== id);
+    if (S.wa.pick === id) {
+      S.wa.pick = null;
+      S.wa.to = "";
+      const inp = document.getElementById("waTo");
+      if (inp) inp.value = "";
+    }
+    renderWaRight();
+  }
+
   function getPosition() {
     return new Promise((resolve) => {
       if (!navigator.geolocation) return resolve(null);
@@ -602,12 +799,12 @@
     S.sos.loc = form.elements.loc.checked;
     if (!rooms.length) {
       S.sos.note = "Pilih minimal satu grup.";
-      return renderList();
+      return renderSosBox();
     }
     if (!confirm(`Kirim PESAN DARURAT ke ${rooms.length} grup sekarang?`)) return;
     S.sos.busy = true;
     S.sos.note = S.sos.loc ? "Mengambil lokasi…" : "";
-    renderList();
+    renderSosBox();
     let pos = null;
     if (S.sos.loc) {
       pos = await getPosition();
@@ -628,7 +825,7 @@
     S.sos.busy = false;
     S.sos.note = failed.length ? "Gagal: " + failed.join("; ") : "";
     App.toast(sent ? `Pesan darurat terkirim ke ${sent} grup` : "Pesan darurat gagal terkirim");
-    renderList();
+    renderSosBox();
   }
 
   // Dialog alarm untuk penerima pesan darurat (realtime).
@@ -687,6 +884,14 @@
     const el = e.target.closest("[data-s]");
     if (!el) return;
     const act = el.dataset.s;
+    if (act === "wa-del") return void deleteWaContact(el.dataset.id);
+    if (act === "wa-pick") return void pickContact(el.dataset.id);
+    if (act === "wa-tpl") {
+      S.wa.msg = TEMPLATES[Number(el.dataset.i)] || "";
+      const ta = document.getElementById("waMsg");
+      if (ta) ta.value = S.wa.msg;
+      return;
+    }
     if (act === "open") {
       const r = roomById(el.dataset.id);
       if (!r) return;
@@ -742,7 +947,9 @@
     if (!form || !isMine()) return;
     e.preventDefault();
     const k = form.dataset.s;
-    if (k === "send-form") sendMsg(form);
+    if (k === "wa-form") sendWa();
+    else if (k === "wa-contact-form") addWaContact(form);
+    else if (k === "send-form") sendMsg(form);
     else if (k === "sos-form") sendSos(form);
     else if (/-form$/.test(k)) submitForm(form);
   }
@@ -774,10 +981,43 @@
     box.addEventListener("change", onChange);
   });
   App.list.addEventListener("click", onListClick);
+  // pilihan kontak di kolom penerima: mousedown agar terpilih sebelum kolom kehilangan fokus
+  App.list.addEventListener("mousedown", (e) => {
+    const b = e.target.closest('[data-s="wa-sug-pick"]');
+    if (!b || !isMine()) return;
+    e.preventDefault();
+    pickContact(b.dataset.id);
+  });
+  App.list.addEventListener("input", (e) => {
+    if (!isMine()) return;
+    if (e.target.id === "waTo") {
+      S.wa.to = e.target.value;
+      S.wa.pick = null;
+      S.wa.sug = true;
+      renderSug();
+    } else if (e.target.id === "waMsg") S.wa.msg = e.target.value;
+    else if (e.target.dataset.s === "wa-loc") S.wa.loc = e.target.checked;
+  });
+  App.list.addEventListener("focusin", (e) => {
+    if (isMine() && e.target.id === "waTo") {
+      S.wa.sug = true;
+      renderSug();
+    }
+  });
+  App.list.addEventListener("focusout", (e) => {
+    if (isMine() && e.target.id === "waTo")
+      setTimeout(() => {
+        S.wa.sug = false;
+        renderSug();
+      }, 120);
+  });
+  App.list.addEventListener("toggle", (e) => {
+    if (e.target.id === "sosDetails") S.sosOpen = e.target.open;
+  }, true);
   App.pane.addEventListener("click", onPaneClick);
   App.pane.addEventListener("keydown", onKeydown);
   App.pane.addEventListener("input", onInput);
-  window.addEventListener("online", () => S.avail && App.user && refreshAll().then(() => isMine() && renderList()).catch(() => {}));
+  window.addEventListener("online", () => S.avail && App.user && refreshAll().then(() => isMine() && repaint()).catch(() => {}));
 
   App.register(VIEWS, { enter, leave, onLogin, onLogout });
 })();

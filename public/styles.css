@@ -942,6 +942,54 @@ body.view-page .mod-list { padding: 28px 32px 40px; width: 100%; max-width: 1180
 .rem-empty { color: var(--faint); text-align: center; padding: 34px 12px; border: 1px dashed var(--border); border-radius: 16px; line-height: 1.6; }
 .rem-sub { margin: 22px 0 10px; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 
+/* ---------- Pesan WhatsApp Cepat (halaman Pesan Darurat) ---------- */
+.wa-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
+.wa-form { display: flex; flex-direction: column; gap: 18px; }
+.wa-field { display: flex; flex-direction: column; gap: 8px; }
+.wa-label { font-size: 12.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.wa-form input:not([type=checkbox]), .wa-form textarea, .wa-addform input {
+  width: 100%; height: 48px; padding: 0 16px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; outline: 0; font-size: 15px;
+}
+.wa-form textarea { height: auto; min-height: 170px; padding: 14px 16px; resize: vertical; line-height: 1.55; }
+.wa-form input:focus, .wa-form textarea:focus, .wa-addform input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.wa-combo { position: relative; }
+.wa-sug { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 10; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.wa-sug button { display: flex; justify-content: space-between; gap: 10px; width: 100%; padding: 10px 14px; text-align: left; }
+.wa-sug button:hover { background: var(--hover); }
+.wa-sug small { color: var(--muted); }
+.wa-tpl { display: flex; flex-wrap: wrap; gap: 6px; }
+.wa-loc { font-size: 13px; font-weight: 500; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.wa-loc input { accent-color: var(--accent); }
+.wa-send {
+  height: 54px; border-radius: 16px; font-size: 15.5px; font-weight: 600; color: #fff;
+  background: linear-gradient(135deg, #d946ef, #c026d3); box-shadow: 0 6px 22px rgba(217, 70, 239, .35); transition: filter .15s, transform .12s;
+}
+.wa-send:hover:not(:disabled) { filter: brightness(1.08); }
+.wa-send:active:not(:disabled) { transform: scale(.99); }
+.wa-send:disabled { opacity: .6; cursor: progress; }
+.wa-right { gap: 16px; padding: 24px; }
+.wa-h { font-size: 16px !important; display: flex; align-items: center; gap: 8px; }
+.wa-addform { display: flex; flex-direction: column; gap: 10px; }
+.wa-addrow { display: flex; gap: 10px; }
+.wa-addrow input { flex: 1; min-width: 0; }
+.wa-add { padding: 0 22px; height: 48px; border-radius: 12px; background: #06b6d4; color: #fff; font-weight: 600; flex-shrink: 0; }
+.wa-add:hover { filter: brightness(1.08); }
+.wa-hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; width: 100%; }
+.wa-contacts { display: flex; flex-direction: column; gap: 10px; }
+.wa-contact { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel-2); cursor: pointer; }
+.wa-contact:hover { border-color: var(--faint); }
+.wa-contact.picked { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.wa-ava { width: 42px; height: 42px; border-radius: 50%; background: #06b6d4; color: #fff; font-weight: 700; display: grid; place-items: center; flex-shrink: 0; font-size: 14px; }
+.wa-cinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.wa-cinfo b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-cinfo small { color: var(--muted); font-size: 13px; }
+.rem-notif a.btn-secondary { color: var(--text); }
+.sos-details { margin-top: 28px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); border-radius: 16px; background: color-mix(in srgb, var(--danger) 4%, var(--panel)); }
+.sos-details summary { cursor: pointer; padding: 14px 18px; font-weight: 600; list-style: none; }
+.sos-details summary::-webkit-details-marker { display: none; }
+.sos-details summary small { color: var(--muted); font-weight: 400; }
+.sos-details > div { padding: 0 18px 18px; display: flex; flex-direction: column; gap: 8px; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1080px) {
   .app { grid-template-columns: 72px 300px 1fr; }
@@ -982,7 +1030,7 @@ body.view-page .mod-list { padding: 28px 32px 40px; width: 100%; max-width: 1180
   .btn-rec { width: 36px; height: 36px; }
   body.view-news .list-pane, body.view-page .list-pane { grid-column: auto; }
   body.view-page .mod-list { padding: 18px 14px 30px; }
-  .rem-grid { grid-template-columns: 1fr; gap: 20px; }
+  .rem-grid, .wa-grid { grid-template-columns: 1fr; gap: 20px; }
   .rem-head h1 { font-size: 22px; }
   .rem-card-form { padding: 16px; }
   .mod-head { flex-wrap: wrap; row-gap: 6px; padding: 8px 10px; }

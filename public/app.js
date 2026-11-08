@@ -827,7 +827,7 @@
     el.listTitle.textContent = viewTitle();
     document.body.classList.toggle("view-news", state.view === "news");
     document.body.classList.toggle("view-mod", isModView());
-    document.body.classList.toggle("view-page", state.view === "reminders"); // halaman penuh tanpa panel editor
+    document.body.classList.toggle("view-page", state.view === "reminders" || state.view === "emergency"); // halaman penuh tanpa panel editor
 
     if (isModView()) {
       /* modul mengelola isi daftarnya sendiri */

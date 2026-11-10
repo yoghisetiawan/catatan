@@ -55,7 +55,8 @@ catatan/
 │   └── icons/
 ├── api/
 │   ├── news.py          # Vercel Function (Python): mengambil RSS berita untuk menu Berita terkini
-│   └── ai.py            # Vercel Function (Python): parafrase dan rapikan rekaman lewat Gemini API
+│   ├── ai.py            # Vercel Function (Python): parafrase dan rapikan rekaman lewat Gemini API
+│   └── wa.py            # Vercel Function (Python): teruskan pesan chat beratribut ke WhatsApp lewat Fonnte
 ├── supabase/
 │   ├── schema.sql                     # tabel notes + kebijakan RLS
 │   ├── migrations/002_fitur_baru.sql  # gambar, berbagi, riwayat, realtime, hapus akun
@@ -67,6 +68,7 @@ catatan/
 │   ├── migrations/008_reservasi_admin.sql  # menu, DP, catatan admin pada reservasi
 │   ├── migrations/009_kuota_ai.sql  # kuota pemakaian AI per pengguna per hari
 │   ├── migrations/010_teks_asli_rekaman.sql  # kolom voice_original (Teks Asli Rekaman)
+│   ├── migrations/011_chat_whatsapp_fonnte.sql  # penerusan chat beratribut ke WhatsApp (Fonnte) + admin
 │   └── email-templates/               # template email berbahasa Indonesia (tempel manual di Supabase)
 └── vercel.json          # konfigurasi hosting Vercel
 ```
@@ -241,6 +243,25 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
 
 Tampilan utama memakai tiga kolom: sidebar (menu, pohon folder, tag), daftar catatan (cari, Tulis/Rekam/Gabung, dikelompokkan per tanggal), dan editor berupa kartu besar. Catatan yang sudah ada terbuka dalam **mode baca**; tombol **Edit** beralih ke mode tulis (⌘E), sedangkan catatan baru langsung mode tulis. Di bawah judul ada bagian lipat **Teks Asli Rekaman** (hasil dikte sebelum dirapikan AI; perlu migrasi [`010_teks_asli_rekaman.sql`](supabase/migrations/010_teks_asli_rekaman.sql), tanpa migrasi ini fitur lain tetap jalan) dan **Daftar Tugas (x/y Selesai)** yang diambil dari baris `- [ ]` di isi catatan. Tema gelap memakai palet biru tua dengan aksen indigo dan cyan.
 
+### Teruskan chat ke WhatsApp (Fonnte)
+
+Pesan di Chat Room yang diberi atribut tertentu (mis. Belanja Pasar, Belanja Sembako, Belanja Superindo, Belanja Online, Belanja Sweet Fellas) bisa diteruskan otomatis ke **satu nomor atau grup WhatsApp** lewat [Fonnte](https://fonnte.com). Pesan WA berbentuk judul atribut tebal, isi pesan, lalu nama pengirim dan ruang. **Fitur ini tidak aktif sebelum kamu menyiapkan tiga hal:**
+
+1. **Token Fonnte:** di dashboard Fonnte hubungkan nomor WhatsApp pengirim, lalu salin token perangkatnya. Di Vercel (*Settings → Environment Variables*) tambahkan `FONNTE_TOKEN` dengan token itu, lalu **Redeploy**. Token hanya tersimpan di Vercel: tidak masuk repo dan tidak pernah dikirim ke browser.
+2. **Migrasi 011** ([`011_chat_whatsapp_fonnte.sql`](supabase/migrations/011_chat_whatsapp_fonnte.sql)) di Supabase SQL Editor (setelah 004 dan 006).
+3. **Daftarkan dirimu sebagai admin** (sekali saja, ganti emailnya), di SQL Editor:
+   ```sql
+   insert into public.wa_admins (user_id) select id from auth.users where email = 'emailmu@gmail.com' on conflict do nothing;
+   ```
+   Admin diperlukan karena token Fonnte milik pemilik aplikasi dipakai bersama: tanpa batas ini, pengguna mana pun yang membuat ruang bisa menyuruh server mengirim WhatsApp ke nomor sembarang memakai kuota Fonnte kamu.
+
+Cara memakai: buka ruangnya, klik **Kelola Atribut**, isi kartu **Teruskan ke WhatsApp**: nomor tujuan (mis. `0812…`, otomatis menjadi `62812…`) atau ID grup berakhiran `@g.us` (lihat dashboard/API Fonnte), pilih atribut yang diteruskan (atau "Semua atribut"), simpan, lalu **Kirim tes**. Setelah itu, saat anggota memilih atribut yang ikut diteruskan, muncul kotak **Ikut dikirim ke WhatsApp** (bisa dicentang-lepas per pesan), dan pesan yang terkirim diberi tanda 📲 WA ✓.
+
+Keamanan:
+- Browser hanya mengirim id pesan. Tujuan WA, isi, dan izin diambil dari database oleh fungsi `wa_claim()` atas nama pengguna; tujuan tidak pernah diterima dari browser dan hanya terlihat oleh pemilik ruang yang admin.
+- Hanya pengirim pesan yang bisa meneruskan pesannya sendiri, hanya dalam 10 menit pertama, satu kali (gagal boleh dicoba ulang sampai 3 kali), dan paling banyak 200 percobaan per pengguna per 24 jam.
+- Satu tujuan per ruang. Gambar tidak dikirim ke WhatsApp (hanya catatan "ada gambar di aplikasi Catatan"). Isi pesan yang diteruskan keluar dari Catatan ke Fonnte dan WhatsApp, jadi beri tahu anggota ruang yang ikut diteruskan.
+
 ### AI (parafrase singkat dan rapikan rekaman)
 
 AI berjalan lewat [`api/ai.py`](api/ai.py) (Vercel Function) yang memanggil **Gemini API (Google)**. **Fitur ini tidak aktif sebelum kamu menyiapkan dua hal:**
@@ -291,7 +312,7 @@ Pengiriman dilakukan di aplikasi WhatsApp milikmu lewat tautan `wa.me`; Catatan 
 
 ### Pengujian SQL
 
-Aturan di migrasi 004 sampai 009 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
+Aturan di migrasi 004 sampai 011 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
 akses lintas pengguna, kode undangan, batas laju, pesan darurat, bentrok jadwal, jam buka, batas reservasi, dan keamanan fungsi. Migrasi juga aman dijalankan dua kali.
 
 ### Berita terkini

@@ -37,6 +37,9 @@
     filter: { attr: null, q: "" },
     panel: false,
     panelQ: "",
+    waInfo: null, // penerusan WhatsApp (Fonnte) untuk ruang ini: {admin, configured, enabled, attrs, target}
+    waAvail: null,
+    waDraft: null,
     imgUrls: new Map(),
     // Pesan WhatsApp Cepat (halaman Pesan Darurat)
     wa: { to: "", pick: null, msg: "", loc: false, contacts: [], cAvail: null, err: "", cerr: "", sug: false, busy: false },
@@ -85,7 +88,7 @@
       read: {}, active: null, msgs: [], oldest: 0, newest: 0, hasMore: false, members: null, form: null, emergencies: [], seenEm: 0, alerts: [],
     });
     S.sos.sel = null;
-    Object.assign(S, { attrs: [], attrAvail: null, roleByName: new Map(), compose: { attr: null, opt: null, file: null }, filter: { attr: null, q: "" }, panel: false, panelQ: "", imgUrls: new Map() });
+    Object.assign(S, { attrs: [], attrAvail: null, roleByName: new Map(), compose: { attr: null, opt: null, file: null }, filter: { attr: null, q: "" }, panel: false, panelQ: "", waInfo: null, waAvail: null, waDraft: null, imgUrls: new Map() });
     Object.assign(S.wa, { to: "", pick: null, msg: "", loc: false, contacts: [], cAvail: null, err: "", cerr: "", sug: false, busy: false });
     closeAlert(true);
     updateBadges();
@@ -414,6 +417,118 @@
     }
   }
 
+  // ── penerusan ke WhatsApp lewat Fonnte (migrasi 011 + api/wa.py)
+  async function loadWa() {
+    if (!S.active) return;
+    const id = S.active.id;
+    const { data, error } = await sb().rpc("wa_room_info", { p_room: id });
+    if (!S.active || S.active.id !== id) return;
+    if (error) {
+      if (/^(42883|PGRST202)$/.test(error.code || "")) S.waAvail = false;
+      return;
+    }
+    S.waAvail = true;
+    S.waInfo = data;
+    renderAttrChips();
+    renderPanel();
+  }
+  const waApplies = (name) => !!(S.waInfo && S.waInfo.enabled && name && (!S.waInfo.attrs.length || S.waInfo.attrs.includes(name)));
+  const waBadge = (m) =>
+    m.wa_state === "sent"
+      ? '<span class="cr-wa-badge ok" title="Sudah diteruskan ke WhatsApp">📲 WA ✓</span>'
+      : m.wa_state === "failed"
+        ? '<span class="cr-wa-badge bad" title="Gagal diteruskan ke WhatsApp">📲 WA gagal</span>'
+        : "";
+
+  // Memanggil api/wa.py (server memeriksa izin di database lalu memakai token Fonnte milik pemilik aplikasi).
+  async function waFetch(payload) {
+    const { data } = await sb().auth.getSession();
+    const token = data && data.session && data.session.access_token;
+    if (!token) throw Object.assign(new Error("Sesi habis. Masuk ulang."), { status: 401 });
+    if (!navigator.onLine) throw new Error("Butuh koneksi internet.");
+    const res = await fetch(`${location.origin}/api/wa`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "x-supabase-key": String((window.CATATAN_CONFIG || {}).supabaseAnonKey || "") },
+      body: JSON.stringify(payload),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (res.status === 404) throw new Error("Penerusan WhatsApp hanya jalan di situs yang sudah di-deploy.");
+    if (!res.ok) throw Object.assign(new Error(j.error || "Gagal meneruskan ke WhatsApp."), { status: res.status });
+    return j;
+  }
+
+  function setWaState(id, state) {
+    const m = S.msgs.find((x) => x.id === id);
+    if (!m) return;
+    m.wa_state = state;
+    const t = document.querySelector(`[data-mid="${id}"] .cr-time`);
+    if (t) t.innerHTML = waBadge(m) + hm(m.created_at);
+  }
+
+  async function forwardWa(row) {
+    try {
+      await waFetch({ message: row.id });
+      setWaState(row.id, "sent");
+      App.toast("Terkirim ke WhatsApp ✓");
+    } catch (err) {
+      if (err.status !== 409) setWaState(row.id, "failed"); // 409 = database menolak (mis. sudah terkirim): status tidak diubah
+      App.toast("WhatsApp: " + err.message);
+    }
+  }
+
+  const readWaForm = (form) => ({
+    target: form.elements.target.value,
+    enabled: form.elements.enabled.checked,
+    all: form.elements.all.checked,
+    attrs: [...form.querySelectorAll('input[name="a"]:checked')].map((i) => i.value),
+  });
+
+  function waCardHtml() {
+    const w = S.waInfo;
+    if (!S.waAvail || !w) return "";
+    if (!w.admin) {
+      return `<div class="cr-wa-card"><h4>📲 Teruskan ke WhatsApp</h4><p>Hanya admin aplikasi yang bisa mengaktifkan ini (lihat README, migrasi 011).</p></div>`;
+    }
+    const d = S.waDraft || { target: w.target || "", enabled: w.configured ? w.enabled : true, all: !w.attrs.length, attrs: w.attrs };
+    return `<form data-s="wa-cfg-form" class="cr-wa-card">
+      <h4>📲 Teruskan ke WhatsApp (Fonnte)</h4>
+      <p>Pesan yang diberi atribut terpilih otomatis dikirim ke satu tujuan ini. Anggota bisa membatalkannya per pesan.</p>
+      <input name="target" data-w="1" placeholder="Nomor (0812…) atau ID grup (…@g.us)" value="${esc(d.target)}" maxlength="60" required autocomplete="off" />
+      <label class="cr-check"><input type="checkbox" name="enabled" data-w="1" ${d.enabled ? "checked" : ""} /> Aktif</label>
+      <label class="cr-check"><input type="checkbox" name="all" data-s="wa-all" data-w="1" ${d.all ? "checked" : ""} /> Semua atribut (termasuk yang baru)</label>
+      <div class="cr-wa-attrs">${S.attrs.map((a) => `<label class="cr-check"><input type="checkbox" name="a" value="${esc(a.name)}" data-w="1" ${d.attrs.includes(a.name) ? "checked" : ""} ${d.all ? "disabled" : ""} /> ${esc(a.name)}</label>`).join("") || '<small>Belum ada atribut.</small>'}</div>
+      <div class="mod-err" data-s="err"></div>
+      <div class="cr-wa-btns"><button class="cr-add" type="submit">Simpan</button>${
+        w.configured ? '<button type="button" class="cr-mini kelola" data-s="wa-test">Kirim tes</button><button type="button" class="cr-mini rename" data-s="wa-clear">Hapus</button>' : ""
+      }</div>
+    </form>`;
+  }
+
+  async function waAction(act, form) {
+    const err = form && form.querySelector('[data-s="err"]');
+    try {
+      if (act === "save") {
+        const d = readWaForm(form);
+        if (!d.all && !d.attrs.length) throw new Error("Pilih minimal satu atribut, atau centang “Semua atribut”.");
+        await rpc("set_wa_config", { p_room: S.active.id, p_target: d.target, p_enabled: d.enabled, p_attrs: d.all ? [] : d.attrs });
+        S.waDraft = null;
+        await loadWa();
+        App.toast("Pengaturan WhatsApp disimpan.");
+      } else if (act === "test") {
+        await waFetch({ test: S.active.id });
+        App.toast("Pesan tes terkirim ke WhatsApp ✓");
+      } else if (act === "clear") {
+        if (!confirm("Hapus pengaturan WhatsApp untuk ruang ini? Pesan tidak akan diteruskan lagi.")) return;
+        await rpc("clear_wa_config", { p_room: S.active.id });
+        S.waDraft = null;
+        await loadWa();
+      }
+    } catch (e) {
+      if (err) err.textContent = e.message;
+      else App.toast(e.message);
+    }
+  }
+
   function msgHtml(m, prev) {
     const mine = m.user_id === me();
     const canDel = mine || isOwnerHere();
@@ -429,7 +544,7 @@
       ${m.image_path ? `<img class="cr-img" data-img="${esc(m.image_path)}" alt="Gambar dari ${esc(m.sender_name)}" />` : ""}
       ${m.body ? `<div class="cr-text">${esc(m.body)}</div>` : ""}
       ${link ? `<a class="loc" href="${esc(link)}" target="_blank" rel="noopener noreferrer">📍 Lihat lokasi di peta</a>` : ""}
-      <div class="cr-time">${hm(m.created_at)}</div></div>`;
+      <div class="cr-time">${waBadge(m)}${hm(m.created_at)}</div></div>`;
   }
 
   function renderConversation() {
@@ -507,7 +622,8 @@
       `<div class="cr-chips">${S.attrs.map((a) => `<button type="button" class="cr-chip${S.compose.attr === a.name ? " on" : ""}" data-s="cattr" data-name="${esc(a.name)}">${I.tag}${esc(a.name)}</button>`).join("")}</div>` +
       (sel && sel.options.length
         ? `<div class="cr-chips opts"><small>Pilih opsi:</small>${sel.options.map((o) => `<button type="button" class="cr-chip${S.compose.opt === o ? " on" : ""}" data-s="copt" data-opt="${esc(o)}">${esc(o)}</button>`).join("")}</div>`
-        : "");
+        : "") +
+      (sel && waApplies(sel.name) ? `<label class="cr-wa"><input type="checkbox" data-s="wa-send" ${S.compose.noWa ? "" : "checked"} /> 📲 Ikut dikirim ke WhatsApp</label>` : "");
   }
 
   function renderFileInfo() {
@@ -530,6 +646,7 @@
     panel.innerHTML = `
       <div class="cr-panel-head"><h3>${I.tag} Kelola Atribut Klasifikasi</h3><button class="icon-btn" data-s="panel-close" aria-label="Tutup panel">✕</button></div>
       <p>Atribut klasifikasi pesan di ruang ini (mis. Absen, Belanja Pasar, Progres). Anggota memilihnya saat mengirim pesan, dan bisa menyaring pesan menurut atribut.</p>
+      ${waCardHtml()}
       <form data-s="attr-form" class="cr-attr-form">
         <div class="cr-addrow"><input name="name" placeholder="Nama atribut baru…" maxlength="40" required /><button class="cr-add" type="submit">+ Tambah</button></div>
         <input name="opts" placeholder="Pilihan ganda (opsional): pisahkan dengan koma" maxlength="300" />
@@ -608,12 +725,15 @@
     S.filter = { attr: null, q: "" };
     S.panel = false;
     S.panelQ = "";
+    S.waInfo = null;
+    S.waDraft = null;
     renderList();
     renderPane();
     const [msgs, attrs, members] = await Promise.all([
       sb().from("chat_messages").select("*").eq("room_id", id).order("id", { ascending: false }).limit(50),
       loadAttrs(),
       sb().rpc("chat_room_members", { p_room: id }),
+      loadWa(),
     ]);
     if (!S.active || S.active.id !== id) return;
     void attrs;
@@ -693,13 +813,15 @@
       }
       ta.value = "";
       ta.style.height = "";
-      S.compose = { attr: cp.attr, opt: cp.opt, file: null }; // atribut dibiarkan terpilih untuk pesan berikutnya
+      S.compose = { attr: cp.attr, opt: cp.opt, file: null }; // atribut dibiarkan terpilih untuk pesan berikutnya; pembatalan WA berlaku per pesan
       renderFileInfo();
       if (row) {
         const prev = S.last.get(row.room_id);
         if (!prev || row.id > prev.id) S.last.set(row.room_id, row);
         appendMsg(row);
         markRead(row.room_id, row.id);
+        if (row.kind === "text" && row.attr && waApplies(row.attr) && !cp.noWa) forwardWa(row);
+        renderAttrChips();
       }
     } catch (err) {
       App.toast(err.message);
@@ -1290,6 +1412,12 @@
     } else if (act === "copt") {
       S.compose.opt = S.compose.opt === el.dataset.opt ? null : el.dataset.opt;
       renderAttrChips();
+    } else if (act === "wa-send") {
+      S.compose.noWa = !el.checked;
+    } else if (act === "wa-all") {
+      el.closest("form").querySelectorAll('input[name="a"]').forEach((i) => (i.disabled = el.checked));
+    } else if (act === "wa-test" || act === "wa-clear") {
+      waAction(act.slice(3), el.closest("form"));
     } else if (act === "pick-img") {
       const f = document.getElementById("crFile");
       if (f) f.click();
@@ -1322,6 +1450,7 @@
     e.preventDefault();
     const k = form.dataset.s;
     if (k === "wa-form") sendWa();
+    else if (k === "wa-cfg-form") waAction("save", form);
     else if (k === "attr-form") attrAction("add", null, form);
     else if (k === "wa-contact-form") addWaContact(form);
     else if (k === "send-form") sendMsg(form);
@@ -1404,6 +1533,11 @@
       if (i) (i.focus(), i.setSelectionRange(pos, pos));
     }
   });
+  const keepWaDraft = (e) => {
+    if (isMine() && e.target.dataset && e.target.dataset.w) S.waDraft = readWaForm(e.target.closest("form"));
+  };
+  App.pane.addEventListener("input", keepWaDraft);
+  App.pane.addEventListener("change", keepWaDraft);
   App.pane.addEventListener("change", (e) => {
     if (!isMine() || e.target.id !== "crFile") return;
     const f = e.target.files && e.target.files[0];

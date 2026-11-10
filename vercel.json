@@ -42,6 +42,9 @@
     },
     "api/news.py": {
       "maxDuration": 15
+    },
+    "api/wa.py": {
+      "maxDuration": 20
     }
   }
 }

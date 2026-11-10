@@ -134,6 +134,17 @@
     newsStatus: $("#newsStatus"),
     newsRefresh: $("#newsRefresh"),
     fabMic: $("#fabMic"),
+    recAi: $("#recAi"),
+    aiVoiceSet: $("#aiVoiceSet"),
+    aiDialog: $("#aiDialog"),
+    aiScope: $("#aiScope"),
+    aiOrig: $("#aiOrig"),
+    aiResult: $("#aiResult"),
+    aiMsg: $("#aiMsg"),
+    aiReplace: $("#aiReplace"),
+    aiInsert: $("#aiInsert"),
+    aiCopy: $("#aiCopy"),
+    aiRetry: $("#aiRetry"),
     fabSection: $("#fabSection"),
     fabShow: $("#fabShow"),
     fabReset: $("#fabReset"),
@@ -178,7 +189,7 @@
 
   // ---------- State ----------
   let notes = [];
-  const prefs = Object.assign({ theme: null, sort: "updated", collapsed: [], installDismissed: 0, foldersHidden: false, fab: null, fabHidden: false }, load(PREFS_KEY, {}));
+  const prefs = Object.assign({ theme: null, sort: "updated", collapsed: [], installDismissed: 0, foldersHidden: false, fab: null, fabHidden: false, aiOk: false, aiVoice: false }, load(PREFS_KEY, {}));
   if (!Array.isArray(prefs.collapsed)) prefs.collapsed = [];
   const state = {
     view: "all", activeId: null, query: "", mode: "edit",
@@ -2428,12 +2439,14 @@
         }
       }
       if (voice.rec === rec) {
+        const seg = { noteId: voice.noteId, before: voice.before, after: voice.after, text: [voice.committed, voice.interim].filter(Boolean).join(" ") };
         voice.rec = null;
         voice.interim = "";
         voice.noteId = null;
         setRecUi(false);
         const cur = activeNote();
         el.contentInput.readOnly = !!(cur && cur.trashed);
+        if (seg.noteId && seg.text) polishVoice(seg); // AI merapikan hasil dikte bila diaktifkan
       }
     };
     try {
@@ -2466,6 +2479,162 @@
     if (voice.active) return stopDictation();
     createNote();
     startDictation();
+  }
+
+  // ---------- AI: parafrase singkat dan merapikan hasil rekam suara ----------
+  // Dipanggil lewat server (api/ai.py): memeriksa sesi, kuota harian, lalu memakai kunci AI milik pemilik aplikasi.
+  async function aiCall(mode, text) {
+    if (!prefs.aiOk) {
+      const ok = confirm(
+        "Teks yang diproses akan dikirim lewat server Catatan ke layanan AI (Anthropic), lalu hasilnya dikembalikan ke sini. " +
+          "Catatan tidak menyimpan teks itu di luar catatanmu. Lanjutkan?"
+      );
+      if (!ok) throw new Error("Dibatalkan.");
+      prefs.aiOk = true;
+      savePrefs();
+    }
+    if (!state.session) throw new Error("Masuk dulu untuk memakai AI.");
+    if (!navigator.onLine) throw new Error("AI butuh koneksi internet.");
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 40_000);
+    try {
+      const res = await fetch(`${location.origin}/api/ai`, {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.session.access_token}`, "x-supabase-key": SUPABASE_KEY },
+        body: JSON.stringify({ mode, text }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 404) throw new Error("Fitur AI hanya tersedia di situs yang sudah di-deploy (bukan server lokal biasa).");
+      if (!res.ok) throw new Error(data.error || "AI gagal. Coba lagi.");
+      return data;
+    } catch (err) {
+      if (err.name === "AbortError") throw new Error("AI terlalu lama menjawab. Coba lagi.");
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const ai = { noteId: null, range: [0, 0], original: "", whole: false, token: 0 };
+
+  function setAiMsg(text, kind = "") {
+    el.aiMsg.textContent = text;
+    el.aiMsg.className = `set-msg ${kind}`;
+  }
+  function setAiBusy(busy) {
+    [el.aiReplace, el.aiInsert, el.aiCopy, el.aiRetry].forEach((b) => (b.disabled = busy));
+    el.aiResult.readOnly = busy;
+    if (busy) {
+      el.aiResult.value = "";
+      el.aiResult.placeholder = "AI sedang menulis ulang…";
+      setAiMsg("Memproses…");
+    } else el.aiResult.placeholder = "Menunggu AI…";
+  }
+
+  // Parafrase teks terpilih; tanpa pilihan, seluruh catatan.
+  function openAi() {
+    const n = activeNote();
+    if (!n || n.trashed) return;
+    if (state.mode !== "edit") {
+      state.mode = "edit";
+      renderMode();
+    }
+    const ta = el.contentInput;
+    const a = ta.selectionStart, b = ta.selectionEnd;
+    const hasSel = b > a;
+    const text = hasSel ? ta.value.slice(a, b) : ta.value;
+    if (text.trim().length < 15) return toast(hasSel ? "Pilih teks yang lebih panjang untuk diparafrase." : "Catatan masih terlalu pendek untuk diparafrase.");
+    if (text.length > 6000) return toast("Teks terlalu panjang (maksimal 6.000 karakter). Pilih sebagian saja.");
+    Object.assign(ai, { noteId: n.id, range: hasSel ? [a, b] : [0, ta.value.length], original: text, whole: !hasSel });
+    el.aiScope.textContent = hasSel ? "Teks terpilih" : "Seluruh catatan";
+    el.aiOrig.textContent = text.length > 1500 ? text.slice(0, 1500) + "…" : text;
+    // Mengganti seluruh catatan yang berisi gambar akan merusak tautan gambarnya: hanya boleh disisipkan.
+    const risky = ai.whole && /\]\(attachment:/.test(text);
+    el.aiReplace.title = risky ? "Catatan berisi gambar: pilih bagian teks saja untuk menggantinya" : "";
+    el.aiReplace.dataset.blocked = risky ? "1" : "";
+    el.aiDialog.showModal();
+    runAi();
+  }
+
+  async function runAi() {
+    const token = ++ai.token;
+    setAiBusy(true);
+    try {
+      const d = await aiCall("paraphrase", ai.original);
+      if (token !== ai.token) return;
+      setAiBusy(false);
+      el.aiResult.value = d.text;
+      setAiMsg(d.remaining != null ? `Sisa kuota AI hari ini: ${d.remaining}` : "");
+    } catch (err) {
+      if (token !== ai.token) return;
+      setAiBusy(false);
+      setAiMsg(err.message, "err");
+    }
+  }
+
+  function aiApply(kind) {
+    const out = el.aiResult.value.trim();
+    const n = notes.find((x) => x.id === ai.noteId);
+    if (!out || !n) return;
+    const [a, b] = ai.range;
+    const prev = n.content;
+    if (kind === "replace") {
+      if (el.aiReplace.dataset.blocked) return setAiMsg("Catatan ini berisi gambar. Pilih bagian teks saja untuk menggantinya, atau pakai Sisipkan.", "err");
+      if (prev.slice(a, b) !== ai.original) return setAiMsg("Teks asli sudah berubah. Pakai Sisipkan atau Salin.", "err");
+      n.content = prev.slice(0, a) + out + prev.slice(b);
+    } else {
+      n.content = prev.slice(0, b) + (prev.slice(0, b).endsWith("\n\n") || !b ? "" : "\n\n") + out + prev.slice(b);
+    }
+    ai.token++;
+    el.aiDialog.close();
+    if (state.activeId === n.id) el.contentInput.value = n.content;
+    touch(n);
+    toast(kind === "replace" ? "Teks diganti dengan hasil AI" : "Hasil AI disisipkan", "Urungkan", () => {
+      n.content = prev;
+      if (state.activeId === n.id) el.contentInput.value = prev;
+      touch(n);
+    });
+  }
+
+  // Setelah rekam suara selesai: AI merapikan teks dikte (bila diaktifkan), dengan tombol Urungkan.
+  async function polishVoice(seg) {
+    if (!prefs.aiVoice || seg.text.trim().length < 20) return;
+    const n = notes.find((x) => x.id === seg.noteId);
+    if (!n || n.trashed) return;
+    const lead = seg.before && !/\s$/.test(seg.before) ? " " : "";
+    const dictated = seg.before + lead + seg.text + seg.after;
+    if (n.content !== dictated) return toast("Catatan sudah berubah. Tekan ✨ di toolbar untuk merapikan manual.");
+    toast("✨ AI sedang merapikan hasil rekaman…");
+    let d;
+    try {
+      d = await aiCall("voice", seg.text);
+    } catch (err) {
+      return toast("AI: " + err.message);
+    }
+    const m = d.text.match(/^\s*Judul:\s*(.{1,100}?)\s*\r?\n+([\s\S]*)$/);
+    const title = m ? m[1].trim() : "";
+    const body = (m ? m[2] : d.text).trim();
+    if (!body) return;
+    if (n.content !== dictated) return toast("Catatan berubah saat AI bekerja; hasil AI tidak dipasang.");
+    const prev = { content: n.content, title: n.title };
+    n.content = seg.before + lead + body + seg.after;
+    if (!n.title && title) n.title = title.slice(0, 140);
+    touch(n);
+    if (state.activeId === n.id) {
+      el.contentInput.value = n.content;
+      el.titleInput.value = n.title;
+    }
+    renderList();
+    toast("✨ Rekaman dirapikan oleh AI", "Urungkan", () => {
+      n.content = prev.content;
+      n.title = prev.title;
+      touch(n);
+      if (state.activeId === n.id) {
+        el.contentInput.value = n.content;
+        el.titleInput.value = n.title;
+      }
+    });
   }
 
   // ---------- Pasang aplikasi (PWA) ----------
@@ -2713,6 +2882,32 @@
     el.recNoteBtn.classList.remove("hidden");
     el.formatBar.querySelector('[data-fmt="mic"]').classList.remove("hidden");
   }
+
+  // AI
+  el.aiRetry.addEventListener("click", runAi);
+  el.aiReplace.addEventListener("click", () => aiApply("replace"));
+  el.aiInsert.addEventListener("click", () => aiApply("insert"));
+  el.aiCopy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(el.aiResult.value);
+      setAiMsg("Hasil disalin.", "ok");
+    } catch {
+      el.aiResult.select();
+      document.execCommand("copy");
+    }
+  });
+  el.aiDialog.addEventListener("close", () => ai.token++);
+  const syncAiVoice = () => {
+    el.recAi.checked = el.aiVoiceSet.checked = !!prefs.aiVoice;
+  };
+  syncAiVoice();
+  [el.recAi, el.aiVoiceSet].forEach((c) =>
+    c.addEventListener("change", () => {
+      prefs.aiVoice = c.checked;
+      savePrefs();
+      syncAiVoice();
+    })
+  );
 
   // Aksi catatan
   el.copyBtn.addEventListener("click", copyActive);
@@ -3004,6 +3199,7 @@
     const b = e.target.closest("[data-fmt]");
     if (!b) return;
     if (b.dataset.fmt === "mic") return voice.active ? stopDictation() : startDictation();
+    if (b.dataset.fmt === "ai") return openAi();
     applyFormat(b.dataset.fmt);
   });
   el.contentInput.addEventListener("keydown", (e) => {
@@ -3053,7 +3249,7 @@
     const b = e.target.closest("[data-action]");
     if (!b) return;
     toggleMenu(false);
-    ({ share: openShare, history: openHistory, export: openExport, print: printNote, copy: copyActive, move: openMove })[b.dataset.action]();
+    ({ share: openShare, history: openHistory, export: openExport, print: printNote, copy: copyActive, move: openMove, ai: openAi })[b.dataset.action]();
   });
 
   // Ekspor

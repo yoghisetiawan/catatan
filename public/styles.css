@@ -1212,6 +1212,17 @@ body.view-page .mod-list:has(.bk-layout) { max-width: none; }
 .bk-bookform input, .bk-bookform select, .bk-bookform textarea { padding: 0 12px; height: 44px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; outline: 0; font-weight: 400; width: 100%; }
 .bk-bookform textarea { height: auto; padding: 10px 12px; resize: vertical; }
 
+/* ---------- AI ---------- */
+.ai-dialog { width: min(900px, calc(100vw - 32px)); }
+.ai-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px; }
+.ai-label { font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.ai-orig { max-height: 260px; overflow-y: auto; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; font-size: 14px; color: var(--muted); }
+.ai-cols textarea { width: 100%; min-height: 200px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); outline: 0; resize: vertical; line-height: 1.55; font-size: 14px; }
+.ai-cols textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.rec-ai { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--text); cursor: pointer; white-space: nowrap; }
+.rec-ai input { accent-color: var(--accent); }
+.format-bar button[data-fmt="ai"] { color: var(--accent); }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1080px) {
   .app { grid-template-columns: 72px 300px 1fr; }
@@ -1274,6 +1285,8 @@ body.view-page .mod-list:has(.bk-layout) { max-width: none; }
   .fab-mic { right: 14px; bottom: 14px; width: 50px; height: 50px; }
   .news-main img { width: 72px; height: 56px; }
   .hide-sm { display: none !important; }
+  .ai-cols { grid-template-columns: 1fr; }
+  .rec-bar { flex-wrap: wrap; }
   .cal-day { aspect-ratio: 1 / 0.66; }
   .cal-add { padding: 6px 12px; }
   .nav-item { padding: 6px; }

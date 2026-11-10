@@ -35,5 +35,13 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/ai.py": {
+      "maxDuration": 30
+    },
+    "api/news.py": {
+      "maxDuration": 15
+    }
+  }
 }

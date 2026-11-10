@@ -285,6 +285,10 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m12 11 3 3-3 3M9 14h6"/></svg>
                 Pindahkan ke folder…
               </button>
+              <button role="menuitem" data-action="ai">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+                Parafrase singkat (AI)
+              </button>
               <button role="menuitem" data-action="share">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                 Bagikan lewat link
@@ -343,6 +347,9 @@
             <button data-fmt="link" title="Tautan">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
             </button>
+            <button data-fmt="ai" title="Parafrase singkat dengan AI (teks terpilih atau seluruh catatan)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+            </button>
             <button data-fmt="mic" class="hidden" title="Dikte: bicara jadi teks">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>
             </button>
@@ -354,6 +361,7 @@
           <div class="rec-bar hidden" id="recBar" role="status">
             <span class="rec-dot"></span>
             <span id="recText">Mendengarkan… bicaralah</span>
+            <label class="rec-ai" title="Setelah selesai, AI merapikan hasil dikte (tanda baca, kata pengisi, judul)"><input type="checkbox" id="recAi" /> ✨ Rapikan dengan AI</label>
             <button class="btn-rec-stop" id="recStopBtn" type="button">Berhenti</button>
           </div>
           <textarea class="content-input" id="contentInput" placeholder="Mulai menulis… (mendukung Markdown: # judul, **tebal**, - [ ] tugas)"></textarea>
@@ -429,6 +437,12 @@
         </div>
       </section>
 
+      <section class="set-section" id="aiSection">
+        <h3>AI</h3>
+        <label class="check-row"><input type="checkbox" id="aiVoiceSet" /> Rapikan hasil rekam suara dengan AI secara otomatis</label>
+        <p class="set-sub">Tombol ✨ di editor memparafrase teks. Teks yang diproses dikirim lewat server Catatan ke layanan AI (Anthropic) hanya saat kamu memakai fitur ini; ada batas pemakaian harian.</p>
+      </section>
+
       <section class="set-section hidden" id="fabSection">
         <h3>Tombol mikrofon melayang</h3>
         <label class="check-row"><input type="checkbox" id="fabShow" /> Tampilkan tombol di layar</label>
@@ -458,6 +472,28 @@
         <button class="btn-secondary" id="setLogoutBtn" type="button">Keluar dari akun</button>
       </div>
       <p class="set-sub legal-links"><a href="privasi.html" target="_blank" rel="noopener">Kebijakan Privasi</a> · <a href="ketentuan.html" target="_blank" rel="noopener">Ketentuan Layanan</a></p>
+    </div>
+  </dialog>
+
+  <!-- Parafrase AI -->
+  <dialog class="dialog ai-dialog" id="aiDialog">
+    <form method="dialog" class="dialog-head">
+      <h2>✨ Parafrase singkat</h2>
+      <button class="icon-btn" value="close" title="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </form>
+    <div class="dialog-body">
+      <div class="ai-cols">
+        <div><div class="ai-label" id="aiScope">Teks asli</div><div class="ai-orig" id="aiOrig"></div></div>
+        <div><div class="ai-label">Hasil AI (boleh diedit)</div><textarea id="aiResult" rows="9" placeholder="Menunggu AI…"></textarea></div>
+      </div>
+      <div class="set-msg" id="aiMsg" role="status"></div>
+      <div class="set-row">
+        <button class="btn-primary" id="aiReplace" type="button">Ganti teks</button>
+        <button class="btn-secondary" id="aiInsert" type="button">Sisipkan di bawahnya</button>
+        <button class="btn-secondary" id="aiCopy" type="button">Salin</button>
+        <button class="btn-secondary" id="aiRetry" type="button">Coba lagi</button>
+      </div>
+      <p class="set-sub">Teks dikirim lewat server Catatan ke layanan AI (Anthropic) hanya saat kamu membuka jendela ini. Periksa hasilnya sebelum dipakai: AI bisa keliru.</p>
     </div>
   </dialog>
 

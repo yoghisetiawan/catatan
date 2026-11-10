@@ -22,6 +22,7 @@ tanpa build step dan tanpa server sendiri.
 - **Rekam suara**: tombol *Rekam* membuat catatan dari ucapan (bahasa Indonesia); tombol mikrofon di toolbar menyisipkan dikte ke catatan yang sedang dibuka
 - **Berita terkini**: headline dari RSS publik (Antara, CNN Indonesia, BBC Indonesia, CNBC Indonesia, Republika), bisa dicari dan disimpan ke catatan (tag `berita`)
 - Tombol **mikrofon melayang** (bisa diseret ke mana saja atau digeser dengan tombol panah; posisinya diingat, bisa disembunyikan atau dikembalikan lewat Pengaturan akun) dan tombol *Input Suara* di layar sambutan untuk merekam dari mana saja
+- **AI** (butuh kunci API, lihat bagian *AI* di bawah): tombol ✨ **Parafrase singkat** untuk teks terpilih atau seluruh catatan (hasil bisa diedit, lalu Ganti, Sisipkan, atau Salin), dan opsi **Rapikan dengan AI** pada rekam suara (tanda baca, kata pengisi dibuang, poin, judul otomatis; ada tombol Urungkan)
 - **Tampilan koordinasi di Chat room dan Pesan grup**: pesan berupa kartu dengan nama, label peran (PEMILIK/ANGGOTA), **atribut klasifikasi** (mis. Absen, Pengeluaran; bisa pilihan ganda), gambar, tombol salin dan hapus, filter menurut atribut, pencarian, dan panel **Kelola Atribut** untuk pemilik ruang
 - Di layar lebar, Chat room dan Pesan grup langsung membuka ruang terakhir yang aktif; bila belum punya ruang, panel kanan menampilkan sambutan dengan tombol **Buat ruang koordinasi**
 - **Pesan WhatsApp Cepat** (menu Pesan darurat): pilih kontak tersimpan atau ketik nomor, tulis pesan (ada templat darurat dan opsi tautan lokasi), lalu buka WhatsApp dengan pesan siap kirim. Kontak yang sama dipakai di halaman Pengingat
@@ -53,7 +54,8 @@ catatan/
 │   ├── manifest.webmanifest
 │   └── icons/
 ├── api/
-│   └── news.py          # Vercel Function (Python): mengambil RSS berita untuk menu Berita terkini
+│   ├── news.py          # Vercel Function (Python): mengambil RSS berita untuk menu Berita terkini
+│   └── ai.py            # Vercel Function (Python): parafrase dan rapikan rekaman lewat API Claude
 ├── supabase/
 │   ├── schema.sql                     # tabel notes + kebijakan RLS
 │   ├── migrations/002_fitur_baru.sql  # gambar, berbagi, riwayat, realtime, hapus akun
@@ -63,6 +65,7 @@ catatan/
 │   ├── migrations/006_chat_atribut_gambar.sql  # atribut pesan + gambar di chat
 │   ├── migrations/007_pesan_terjadwal.sql  # pesan terjadwal ke grup WhatsApp
 │   ├── migrations/008_reservasi_admin.sql  # menu, DP, catatan admin pada reservasi
+│   ├── migrations/009_kuota_ai.sql  # kuota pemakaian AI per pengguna per hari
 │   └── email-templates/               # template email berbahasa Indonesia (tempel manual di Supabase)
 └── vercel.json          # konfigurasi hosting Vercel
 ```
@@ -231,6 +234,21 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
 - Pesan **tidak dienkripsi ujung ke ujung**: administrator proyek Supabase secara teknis dapat membacanya. Hapus pesan lewat tombol "hapus" hanya terlihat di perangkat lain setelah memuat ulang
   (peristiwa DELETE sengaja tidak dilanggan, karena tidak bisa disaring per pengguna).
 
+### AI (parafrase singkat dan rapikan rekaman)
+
+AI berjalan lewat [`api/ai.py`](api/ai.py) (Vercel Function) yang memanggil API Claude. **Fitur ini tidak aktif sebelum kamu menyiapkan tiga hal:**
+
+1. **Kunci API:** buat kunci di https://console.anthropic.com (pemakaian AI **berbayar** per permintaan, ditagih ke akunmu). Di Vercel buka *Project → Settings → Environment Variables*, tambahkan
+   `ANTHROPIC_API_KEY` dengan kunci itu (Production), lalu **Redeploy**. Kunci hanya tersimpan di Vercel: tidak masuk repo dan tidak pernah dikirim ke browser.
+2. **Migrasi 009** ([`009_kuota_ai.sql`](supabase/migrations/009_kuota_ai.sql)) di Supabase SQL Editor: tabel kuota harian. Tanpa migrasi ini fungsi menolak semua permintaan (gagal tertutup, supaya biaya tidak tak terkendali).
+3. (Opsional) `AI_DAILY_LIMIT` (bawaan **40** permintaan per pengguna per hari), `AI_MODEL` (bawaan `claude-haiku-5-5`, model kecil yang cepat dan murah).
+
+Keamanan dan privasi:
+- Hanya pengguna yang masuk yang bisa memakainya: fungsi memeriksa token sesi Supabase, lalu memanggil `ai_take_quota()` atas nama pengguna **sebelum** memanggil API Claude. Batas teks: 6.000 karakter (parafrase) dan 12.000 karakter (rekaman).
+- Teks dikirim ke Anthropic hanya saat pengguna memakai fitur (konfirmasi sekali di awal). Catatan tidak menyimpan teks itu di luar catatan pengguna; galat dari penyedia tidak diteruskan ke browser.
+- Teks pengguna dikirim sebagai data di dalam tag `<teks>` dengan instruksi tegas untuk mengabaikan perintah di dalamnya (mengurangi prompt injection), dan hasilnya selalu ditampilkan atau dapat diurungkan sebelum/sesudah dipakai.
+- Rapikan rekaman otomatis dimatikan secara bawaan; nyalakan lewat kotak centang di bar rekam atau di Pengaturan akun. AI bisa keliru: periksa hasilnya.
+
 ### Pesan grup (WhatsApp terjadwal)
 
 - Pesan tersimpan di tabel `wa_scheduled` (hanya pemiliknya yang bisa mengaksesnya; batas 200 per pengguna). Kolom `send_at` adalah jadwal berikutnya; pesan berulang maju sendiri setelah dikirim atau dilewati.
@@ -265,7 +283,7 @@ Pengiriman dilakukan di aplikasi WhatsApp milikmu lewat tautan `wa.me`; Catatan 
 
 ### Pengujian SQL
 
-Aturan di migrasi 004, 005, 006, 007, dan 008 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
+Aturan di migrasi 004 sampai 009 diuji terhadap Postgres sungguhan (bukan tiruan) dengan peran `anon` dan `authenticated` dan tiga pengguna (pemilik, anggota, orang luar):
 akses lintas pengguna, kode undangan, batas laju, pesan darurat, bentrok jadwal, jam buka, batas reservasi, dan keamanan fungsi. Migrasi juga aman dijalankan dua kali.
 
 ### Berita terkini

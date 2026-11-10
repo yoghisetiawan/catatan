@@ -78,76 +78,77 @@
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-logo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h4"/></svg>
-        </div>
-        <span>Catatan</span>
-      </div>
-
-      <div class="new-row">
-        <button class="btn-primary" id="newNoteBtn" title="Catatan baru (N)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          Catatan baru
-        </button>
-        <button class="btn-rec hidden" id="recNoteBtn" title="Rekam suara jadi catatan">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>
-          <span>Rekam</span>
+        <span class="brand-text">CATATAN</span>
+        <span class="grow"></span>
+        <button class="icon-btn" id="themeBtn" title="Ganti tema">
+          <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+          <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>
         </button>
       </div>
 
       <nav class="nav">
         <button class="nav-item active" data-view="all">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-          <span>Semua catatan</span><em class="count" data-count="all">0</em>
-        </button>
-        <button class="nav-item" data-view="pinned">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
-          <span>Disematkan</span><em class="count" data-count="pinned">0</em>
+          <span>Catatan Saya</span><em class="count" data-count="all">0</em>
         </button>
         <button class="nav-item" data-view="calendar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-          <span>Kalender harian</span>
-        </button>
-        <button class="nav-item" data-view="reminders">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-          <span>Pengingat &amp; alarm</span><em class="count" data-count="reminders">0</em>
+          <span>Kalender Harian</span>
         </button>
         <button class="nav-item" data-view="news">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8v4h-8z"/></svg>
-          <span>Berita terkini</span>
+          <span>Berita Terkini</span>
+        </button>
+        <button class="nav-item" data-view="reminders">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          <span>Pengingat &amp; Alarm</span><em class="count" data-count="reminders">0</em>
         </button>
         <button class="nav-item" data-view="emergency">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19z"/><path d="M12 10v4M12 17.5v.01"/></svg>
-          <span>Pesan darurat</span><em class="count alert" data-count="emergency"></em>
+          <span>Pesan Darurat</span><em class="count alert" data-count="emergency"></em>
         </button>
         <button class="nav-item" data-view="groups">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
-          <span>Pesan grup</span><em class="count alert" data-count="groups"></em>
+          <span>Pesan Grup</span><em class="count alert" data-count="groups"></em>
         </button>
         <button class="nav-item" data-view="chat">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <span>Chat room</span><em class="count alert" data-count="chat"></em>
+          <span>Chat Room</span><em class="count alert" data-count="chat"></em>
         </button>
         <button class="nav-item" data-view="booking">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/></svg>
-          <span>Reservasi meja</span><em class="count" data-count="booking"></em>
+          <span>Reservasi Meja</span><em class="count" data-count="booking"></em>
+        </button>
+      </nav>
+
+      <div class="section-title folder-title">
+        <button class="folder-head" id="folderHead" aria-expanded="true" title="Ciutkan atau buka daftar folder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          <span>Folder Catatan</span>
+          <svg class="fh-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
+        </button>
+        <button class="icon-btn mini" id="addFolderBtn" title="Folder baru">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div class="folder-all" id="folderAll">
+        <button class="nav-item tree-all" data-view="all">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          <span>Semua Catatan</span>
+        </button>
+      </div>
+      <div class="folder-tree" id="folderTree"></div>
+
+      <nav class="nav nav-more">
+        <button class="nav-item" data-view="pinned">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+          <span>Disematkan</span><em class="count" data-count="pinned">0</em>
         </button>
         <button class="nav-item" data-view="trash">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
           <span>Sampah</span><em class="count" data-count="trash">0</em>
         </button>
       </nav>
-
-      <div class="section-title folder-title">
-        <button class="folder-head" id="folderHead" aria-expanded="true" title="Ciutkan atau buka daftar folder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          <span>Folder catatan</span>
-        </button>
-        <button class="icon-btn mini" id="addFolderBtn" title="Folder baru">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-      </div>
-      <div class="folder-tree" id="folderTree"></div>
 
       <div class="section-title">Tag</div>
       <div class="tag-list" id="tagList"></div>
@@ -163,10 +164,6 @@
       </div>
 
       <div class="sidebar-footer">
-        <button class="icon-btn" id="themeBtn" title="Ganti tema">
-          <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-          <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>
-        </button>
         <button class="icon-btn" id="exportBtn" title="Ekspor catatan (JSON)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
         </button>
@@ -183,17 +180,20 @@
         <div class="search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="searchInput" type="search" placeholder="Cari catatan…" autocomplete="off" />
-          <kbd>⌘K</kbd>
-        </div>
-        <div class="list-meta">
-          <h2 id="listTitle">Semua catatan</h2>
-          <button class="link-btn merge-toggle" id="mergeToggle" title="Pilih beberapa catatan lalu gabungkan jadi satu">Gabung</button>
-          <select id="folderFilter" class="folder-filter" title="Folder"></select>
           <select id="sortSelect" title="Urutkan">
-            <option value="updated">Terakhir diubah</option>
+            <option value="updated">Terbaru diubah</option>
             <option value="created">Tanggal dibuat</option>
             <option value="title">Judul A–Z</option>
           </select>
+        </div>
+        <div class="list-actions">
+          <button class="la-btn la-new" id="newNoteBtn" title="Catatan baru (N)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span>Tulis</span></button>
+          <button class="la-btn la-rec hidden" id="recNoteBtn" title="Rekam suara jadi catatan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg><span>Rekam</span></button>
+          <button class="la-btn la-merge" id="mergeToggle" title="Pilih beberapa catatan lalu gabungkan jadi satu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10M18 11c0 4-6 3-12 6"/></svg><span>Gabung</span></button>
+        </div>
+        <div class="list-meta">
+          <h2 id="listTitle">Semua catatan</h2>
+          <select id="folderFilter" class="folder-filter" title="Folder"></select>
         </div>
       </header>
       <div class="calendar hidden" id="calendar" aria-label="Kalender harian"></div>
@@ -236,43 +236,46 @@
       </div>
 
       <div class="editor hidden" id="editor">
-        <div class="editor-toolbar">
-          <button class="icon-btn back-btn" id="backBtn" title="Kembali">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-          </button>
-          <span class="save-status" id="saveStatus">Tersimpan</span>
-          <div class="toolbar-spacer"></div>
-
-          <div class="seg" id="modeSeg">
-            <button data-mode="edit" class="active">Tulis</button>
-            <button data-mode="preview">Pratinjau</button>
+        <div class="ed-scroll">
+          <div class="ed-top">
+            <button class="icon-btn back-btn" id="backBtn" title="Kembali"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+            <textarea class="title-input" id="titleInput" rows="1" placeholder="Judul" maxlength="140"></textarea>
+            <div class="ed-actions">
+              <button class="ed-act cyan hidden" id="voiceNoteBtn" title="Dikte suara ke catatan ini, lalu AI merapikannya"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg><span>Input Suara AI</span></button>
+              <button class="ed-act indigo" id="editToggleBtn" title="Edit catatan (⌘E)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span>Edit</span></button>
+              <button class="ed-act amber hidden" id="moveBtn" title="Pindahkan ke folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m12 11 3 3-3 3M9 14h6"/></svg><span>Pindahkan</span></button>
+              <button class="ed-act red" id="deleteBtn" title="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Hapus</span></button>
+              <button class="ed-act green" id="restoreBtn" title="Pulihkan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Pulihkan</span></button>
+              <button class="ed-act square hide-sm" id="focusBtn" title="Mode fokus (layar penuh)" aria-label="Mode fokus"><svg class="i-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            <svg class="i-shrink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg></button>
+            </div>
           </div>
 
-          <div class="color-picker" id="colorPicker" title="Warna catatan"></div>
+          <div class="ed-meta">
+            <span class="ed-date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span id="dateInfo"></span></span>
+            <label class="folder-pick hidden" id="folderPick" title="Pindahkan ke folder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              <select id="folderSelect" aria-label="Folder catatan"></select>
+            </label>
+            <span class="grow"></span>
+            <span class="save-status" id="saveStatus">Tersimpan</span>
+          </div>
 
-          <button class="icon-btn hide-sm" id="copyBtn" title="Salin isi catatan" aria-label="Salin isi catatan">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-          </button>
-          <button class="icon-btn hide-sm hidden" id="moveBtn" title="Pindahkan ke folder" aria-label="Pindahkan ke folder">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m12 11 3 3-3 3M9 14h6"/></svg>
-          </button>
-          <button class="icon-btn hide-sm" id="focusBtn" title="Mode fokus (layar penuh)" aria-label="Mode fokus">
-            <svg class="i-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-            <svg class="i-shrink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>
-          </button>
-          <button class="icon-btn hidden" id="remindBtn" title="Atur pengingat">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-          </button>
-          <button class="icon-btn" id="pinBtn" title="Sematkan">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
-          </button>
-          <button class="icon-btn" id="restoreBtn" title="Pulihkan">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-          </button>
-          <button class="icon-btn danger" id="deleteBtn" title="Hapus">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-          </button>
-          <div class="menu-wrap">
+          <div class="ed-tags tags-row" id="tagsRow">
+            <div class="tag-chips" id="tagChips"></div>
+            <input class="tag-input" id="tagInput" placeholder="+ tambah tag" maxlength="24" />
+          </div>
+
+          <div class="ed-tools">
+            <button class="icon-btn" id="pinBtn" title="Sematkan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg></button>
+            <button class="icon-btn hidden" id="remindBtn" title="Atur pengingat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
+            <div class="color-picker" id="colorPicker" title="Warna catatan"></div>
+            <div class="seg" id="modeSeg">
+              <button data-mode="edit" class="active">Tulis</button>
+              <button data-mode="preview">Pratinjau</button>
+            </div>
+            <span class="grow"></span>
+<div class="menu-wrap">
             <button class="icon-btn" id="moreBtn" title="Lainnya" aria-haspopup="menu" aria-expanded="false">
               <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
             </button>
@@ -308,19 +311,20 @@
               </button>
             </div>
           </div>
-        </div>
-
-        <div class="editor-body">
-          <input class="title-input" id="titleInput" placeholder="Judul" maxlength="140" />
-          <div class="tags-row" id="tagsRow">
-            <label class="folder-pick hidden" id="folderPick" title="Pindahkan ke folder">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-              <select id="folderSelect" aria-label="Folder catatan"></select>
-            </label>
-            <div class="tag-chips" id="tagChips"></div>
-            <input class="tag-input" id="tagInput" placeholder="+ tambah tag" maxlength="24" />
           </div>
-          <div class="format-bar" id="formatBar" role="toolbar" aria-label="Format teks">
+
+          <details class="ed-acc hidden" id="origAcc">
+            <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg><span>Teks Asli Rekaman</span><svg class="acc-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <div class="acc-body" id="origText"></div>
+          </details>
+          <details class="ed-acc hidden" id="taskAcc">
+            <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span id="taskSummary">Daftar Tugas</span><svg class="acc-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <div class="acc-body" id="taskBody"></div>
+          </details>
+
+          <div class="ed-card">
+            <button class="ed-copy" id="copyBtn" title="Salin isi catatan" aria-label="Salin isi catatan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Salin</span></button>
+            <div class="format-bar" id="formatBar" role="toolbar" aria-label="Format teks">
             <button data-fmt="bold" title="Tebal (⌘B)"><b>B</b></button>
             <button data-fmt="italic" title="Miring (⌘I)"><i>I</i></button>
             <button data-fmt="strike" title="Coret"><s>S</s></button>
@@ -357,20 +361,20 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
             </button>
           </div>
-          <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
-          <div class="rec-bar hidden" id="recBar" role="status">
-            <span class="rec-dot"></span>
-            <span id="recText">Mendengarkan… bicaralah</span>
-            <label class="rec-ai" title="Setelah selesai, AI merapikan hasil dikte (tanda baca, kata pengisi, judul)"><input type="checkbox" id="recAi" /> ✨ Rapikan dengan AI</label>
-            <button class="btn-rec-stop" id="recStopBtn" type="button">Berhenti</button>
+            <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+            <div class="rec-bar hidden" id="recBar" role="status">
+              <span class="rec-dot"></span>
+              <span id="recText">Mendengarkan… bicaralah</span>
+              <label class="rec-ai" title="Setelah selesai, AI merapikan hasil dikte (tanda baca, kata pengisi, judul)"><input type="checkbox" id="recAi" /> ✨ Rapikan dengan AI</label>
+              <button class="btn-rec-stop" id="recStopBtn" type="button">Berhenti</button>
+            </div>
+            <textarea class="content-input" id="contentInput" placeholder="Mulai menulis… (mendukung Markdown: # judul, **tebal**, - [ ] tugas)"></textarea>
+            <article class="preview hidden" id="preview"></article>
           </div>
-          <textarea class="content-input" id="contentInput" placeholder="Mulai menulis… (mendukung Markdown: # judul, **tebal**, - [ ] tugas)"></textarea>
-          <article class="preview hidden" id="preview"></article>
         </div>
 
         <footer class="editor-footer">
           <span id="wordCount">0 kata</span>
-          <span id="dateInfo"></span>
         </footer>
       </div>
     </main>

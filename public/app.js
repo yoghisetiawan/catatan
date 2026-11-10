@@ -145,6 +145,14 @@
     aiInsert: $("#aiInsert"),
     aiCopy: $("#aiCopy"),
     aiRetry: $("#aiRetry"),
+    editToggleBtn: $("#editToggleBtn"),
+    voiceNoteBtn: $("#voiceNoteBtn"),
+    origAcc: $("#origAcc"),
+    origText: $("#origText"),
+    taskAcc: $("#taskAcc"),
+    taskBody: $("#taskBody"),
+    taskSummary: $("#taskSummary"),
+    folderAll: $("#folderAll"),
     fabSection: $("#fabSection"),
     fabShow: $("#fabShow"),
     fabReset: $("#fabReset"),
@@ -195,11 +203,13 @@
     view: "all", activeId: null, query: "", mode: "edit",
     user: null, session: null, authMode: "login", recovering: false,
     emailOpen: false, // form email dibuka lewat tautan (mode Google saja)
-    features: { v2: false, v3: false }, // v2 = migrasi 002 (gambar, berbagi, riwayat); v3 = migrasi 003 (folder, pengingat)
+    features: { v2: false, v3: false, v10: false }, // v2 = migrasi 002 (gambar, berbagi, riwayat); v3 = migrasi 003 (folder, pengingat)
     calMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     calDay: ymd(Date.now()),
     offline: !navigator.onLine,
     oauthAvailable: false,
+    shownId: null, // catatan yang terakhir digambar di editor (untuk memilih mode baca/tulis)
+    forceEdit: null, // id catatan baru: dibuka langsung dalam mode tulis
   };
   const dirty = new Set(); // catatan yang berubah dan belum terkirim
   const inflight = new Set(); // sedang dikirim
@@ -275,6 +285,7 @@
       row.trashed_at = n.trashed ? Math.round(n.trashedAt || Date.now()) : null;
       row.share_id = n.shareId || null;
     }
+    if (state.features.v10) row.voice_original = n.voiceOriginal ? String(n.voiceOriginal).slice(0, 20000) : null;
     if (state.features.v3) {
       row.folder_id = n.folderId && FOLDER_ID_RE.test(n.folderId) ? n.folderId : null;
       row.remind_at = n.remindAt && !n.trashed ? Math.round(n.remindAt) : null;
@@ -296,6 +307,7 @@
     shareId: r.share_id || null,
     folderId: r.folder_id || null,
     remindAt: r.remind_at == null ? null : Number(r.remind_at),
+    voiceOriginal: r.voice_original || null,
   });
 
   const isNetworkError = (err) =>
@@ -317,6 +329,13 @@
     const tbl = await sb.from("user_folders").select("user_id").limit(1);
     if (!tbl.error) state.features.v3 = true;
     else if (/^(42P01|PGRST205)$/.test(tbl.error.code || "")) state.features.v3 = false;
+  }
+
+  // Migrasi 010: kolom voice_original (teks asli rekaman) — dicek terpisah agar fitur lain tetap jalan tanpa migrasi itu.
+  async function detectVoiceColumn() {
+    const { error } = await sb.from("notes").select("voice_original").limit(1);
+    if (!error) state.features.v10 = true;
+    else if (/^(42703|PGRST204)$/.test(error.code || "")) state.features.v10 = false;
   }
 
   // Rapikan data folder dari server/cache: id valid, nama wajar, tanpa induk hilang atau lingkaran.
@@ -392,7 +411,7 @@
   function setStatus(kind) {
     const text = {
       saving: "Menyimpan…",
-      saved: "Tersimpan",
+      saved: "Tersimpan otomatis",
       error: "Gagal menyimpan — mencoba lagi…",
       offline: "Offline — tersimpan di perangkat",
     }[kind];
@@ -550,7 +569,7 @@
   const sameNote = (a, b) =>
     a.title === b.title && a.content === b.content && a.color === b.color && a.pinned === b.pinned &&
     a.trashed === b.trashed && (a.shareId || null) === (b.shareId || null) &&
-    (a.folderId || null) === (b.folderId || null) && (a.remindAt || null) === (b.remindAt || null) && a.tags.join("\u0000") === b.tags.join("\u0000");
+    (a.folderId || null) === (b.folderId || null) && (a.remindAt || null) === (b.remindAt || null) && (a.voiceOriginal || null) === (b.voiceOriginal || null) && a.tags.join("\u0000") === b.tags.join("\u0000");
 
   let remoteRenderTimer = null;
   function scheduleRemoteRender() {
@@ -803,15 +822,17 @@
       n.remindAt && !n.trashed
         ? `<span class="remind-chip${n.remindAt <= Date.now() ? " late" : ""}" title="Pengingat">${BELL_SVG}${formatRemind(n.remindAt)}</span>`
         : "";
-    const tags = n.tags.slice(0, 3).map((t) => `<span class="mini-tag">#${escapeHtml(t)}</span>`).join("");
+    const tags = n.tags.filter((t) => t !== VOICE_TAG).slice(0, 2).map((t) => `<span class="mini-tag">#${escapeHtml(t)}</span>`).join("");
+    const extra = remind + (n.shareId && !n.trashed ? SHARE_BADGE : "") + tags;
     return `
       <button class="note-card${n.id === state.activeId && !merge.on ? " active" : ""}${merge.on && merge.sel.has(n.id) ? " picked" : ""}" data-id="${n.id}" style="--note-color:${n.color || "transparent"}">
         ${merge.on ? `<span class="pick">${CHECK_ICON}</span>` : ""}
         <h4>${n.pinned && !n.trashed ? PIN_SVG : n.tags.includes(VOICE_TAG) ? MIC_ICON : DOC_ICON}<span class="t">${n.title ? highlight(n.title, q) : '<span style="color:var(--faint)">Tanpa judul</span>'}</span><span class="card-date">${cardDate(prefs.sort === "created" ? n.createdAt : n.updatedAt)}</span></h4>
-        <p>${snippet(n, q)}</p>
-        <div class="meta"><span>${relativeTime(n.updatedAt)}</span>${remind}${n.shareId && !n.trashed ? SHARE_BADGE : ""}${tags}</div>
+        ${q ? `<p>${snippet(n, q)}</p>` : ""}
+        ${extra ? `<div class="meta">${extra}</div>` : ""}
       </button>`;
   }
+
 
   function viewTitle() {
     const v = state.view;
@@ -841,6 +862,7 @@
     el.listTitle.textContent = viewTitle();
     document.body.classList.toggle("view-news", state.view === "news");
     document.body.classList.toggle("view-mod", isModView());
+    document.body.classList.toggle("view-plain", state.view === "all");
     document.body.classList.toggle("view-page", ["reminders", "emergency", "groups", "booking"].includes(state.view)); // halaman penuh tanpa panel editor
 
     if (isModView()) {
@@ -937,6 +959,7 @@
     const on = state.features.v3;
     el.addFolderBtn.classList.toggle("hidden", !on || prefs.foldersHidden);
     el.folderTree.classList.toggle("hidden", prefs.foldersHidden);
+    el.folderAll.classList.toggle("hidden", prefs.foldersHidden);
     el.folderHead.setAttribute("aria-expanded", String(!prefs.foldersHidden));
     if (!on) {
       el.folderTree.innerHTML =
@@ -955,7 +978,7 @@
           const open = !collapsed.has(f.id);
           const name = escapeHtml(f.name);
           rows.push(
-            `<div class="folder-row${state.view === "folder:" + f.id ? " active" : ""}" style="padding-left:${depth * 14}px">` +
+            `<div class="folder-row${state.view === "folder:" + f.id ? " active" : ""}">` +
               `<button class="folder-caret${kids ? (open ? " open" : "") : " none"}" data-toggle="${f.id}" tabindex="${kids ? 0 : -1}" aria-label="${open ? "Ciutkan" : "Buka"} ${name}">${CARET_SVG}</button>` +
               `<button class="folder-main" data-open="${f.id}" title="${name}">${FOLDER_SVG}<span class="f-name">${name}</span></button>` +
               `<em class="count">${total(f.id) || ""}</em>` +
@@ -965,7 +988,11 @@
               act("delete", f.id, "Hapus folder", '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>') +
               `</span></div>`
           );
-          if (kids && open) walk(f.id, depth + 1);
+          if (kids && open) {
+            rows.push('<div class="folder-children">'); // garis penuntun di sisi kiri anak folder
+            walk(f.id, depth + 1);
+            rows.push("</div>");
+          }
         }
       };
       walk(null, 0);
@@ -1132,7 +1159,16 @@
     el.emptyState.classList.toggle("hidden", !!n);
     el.editor.classList.toggle("hidden", !n);
     el.app.classList.toggle("editing", !!n);
-    if (!n) return;
+    if (!n) {
+      state.shownId = null;
+      return;
+    }
+    if (state.activeId !== state.shownId) {
+      // Catatan lama dibuka dalam mode baca (seperti tampilan referensi); catatan baru langsung mode tulis.
+      state.shownId = state.activeId;
+      if (state.forceEdit === state.activeId) state.forceEdit = null;
+      else state.mode = "preview";
+    }
 
     if (el.titleInput.value !== n.title) el.titleInput.value = n.title;
     if (el.contentInput.value !== n.content) el.contentInput.value = n.content;
@@ -1167,10 +1203,13 @@
     el.remindBtn.classList.toggle("set", !!n.remindAt);
     el.remindBtn.title = n.remindAt ? `Pengingat: ${formatRemind(n.remindAt)}` : "Atur pengingat";
 
+    el.voiceNoteBtn.classList.toggle("hidden", !SpeechRec || readOnly);
     renderChips(n);
     renderColors(n);
     renderMode();
+    renderAccordions(n);
     updateFooter(n);
+    autosizeTitle();
   }
 
   function renderChips(n) {
@@ -1198,16 +1237,52 @@
     el.contentInput.classList.toggle("hidden", preview);
     el.preview.classList.toggle("hidden", !preview);
     el.formatBar.classList.toggle("hidden", preview || !n || n.trashed);
+    el.editToggleBtn.classList.toggle("hidden", !n || n.trashed);
+    el.editToggleBtn.classList.toggle("on", !preview);
+    el.editToggleBtn.querySelector("span").textContent = preview ? "Edit" : "Selesai";
+    el.editToggleBtn.title = preview ? "Edit catatan (⌘E)" : "Selesai mengedit (⌘E)";
     if (preview && n) {
       el.preview.innerHTML = renderMarkdown(n.content);
       resolveImages(el.preview);
     }
+    if (n) renderAccordions(n);
   }
 
   function updateFooter(n) {
     const words = plainText(n.content).split(/\s+/).filter(Boolean).length;
     el.wordCount.textContent = `${words} kata · ${n.content.length} karakter`;
-    el.dateInfo.textContent = `Diubah ${fullDate(n.updatedAt)}`;
+    el.dateInfo.textContent = new Date(n.updatedAt).toLocaleString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+
+  // Judul memakai textarea agar judul panjang turun ke baris berikutnya.
+  function autosizeTitle() {
+    const t = el.titleInput;
+    t.style.height = "auto";
+    t.style.height = t.scrollHeight + "px";
+  }
+
+  // Bagian lipat: teks asli rekaman (hasil sebelum dirapikan AI) dan daftar tugas dari checklist di catatan.
+  const accOpen = { orig: false, task: false };
+  function renderAccordions(n) {
+    const hasOrig = !!n.voiceOriginal;
+    el.origAcc.classList.toggle("hidden", !hasOrig);
+    if (hasOrig) {
+      el.origText.textContent = n.voiceOriginal;
+      el.origAcc.open = accOpen.orig;
+    }
+    const tasks = [];
+    n.content.split("\n").forEach((line, i) => {
+      const m = line.match(/^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/);
+      if (m) tasks.push({ i, done: m[1] !== " ", text: m[2] });
+    });
+    el.taskAcc.classList.toggle("hidden", !tasks.length);
+    if (tasks.length) {
+      el.taskSummary.textContent = `Daftar Tugas (${tasks.filter((t) => t.done).length}/${tasks.length} Selesai)`;
+      el.taskBody.innerHTML = tasks
+        .map((t) => `<label class="ed-task${t.done ? " done" : ""}"><input type="checkbox" data-line="${t.i}" ${t.done ? "checked" : ""} ${n.trashed ? "disabled" : ""} /><span>${escapeHtml(t.text.replace(/\*\*|__|`/g, ""))}</span></label>`)
+        .join("");
+      el.taskAcc.open = accOpen.task;
+    }
   }
 
   function render() {
@@ -1237,6 +1312,7 @@
     el.searchInput.value = "";
     state.activeId = n.id;
     state.mode = "edit";
+    state.forceEdit = n.id;
     persist(n);
     render();
     el.titleInput.focus();
@@ -1347,7 +1423,7 @@
       merge.on = false;
       merge.sel.clear();
       el.mergeToggle.classList.remove("on");
-      el.mergeToggle.textContent = "Gabung";
+      el.mergeToggle.querySelector("span").textContent = "Gabung";
       renderMergeBar();
     }
     if (prev !== view && Object.prototype.hasOwnProperty.call(MOD_VIEWS, prev) && modules[prev] && modules[prev].leave) modules[prev].leave(prev);
@@ -1935,7 +2011,7 @@
     merge.on = on;
     merge.sel.clear();
     el.mergeToggle.classList.toggle("on", on);
-    el.mergeToggle.textContent = on ? "Selesai" : "Gabung";
+    el.mergeToggle.querySelector("span").textContent = on ? "Selesai" : "Gabung";
     renderMergeBar();
     renderList();
   }
@@ -2009,7 +2085,7 @@
     merge.on = false;
     merge.sel.clear();
     el.mergeToggle.classList.remove("on");
-    el.mergeToggle.textContent = "Gabung";
+    el.mergeToggle.querySelector("span").textContent = "Gabung";
     renderMergeBar();
     state.view = "all";
     state.activeId = merged.id;
@@ -2372,7 +2448,7 @@
     if (on) el.recText.textContent = "Mendengarkan… bicaralah";
   }
 
-  function startDictation() {
+  function startDictation(opts = {}) {
     const n = activeNote();
     if (!SpeechRec || !n || n.trashed || voice.active) return;
     if (state.mode !== "edit") {
@@ -2384,7 +2460,7 @@
     const end = ta.selectionEnd == null ? start : ta.selectionEnd;
     Object.assign(voice, {
       active: true, noteId: n.id, before: ta.value.slice(0, start), after: ta.value.slice(end),
-      committed: "", interim: "", quiet: 0, heard: false,
+      committed: "", interim: "", quiet: 0, heard: false, ai: !!opts.ai,
     });
     const rec = new SpeechRec();
     voice.rec = rec;
@@ -2439,7 +2515,7 @@
         }
       }
       if (voice.rec === rec) {
-        const seg = { noteId: voice.noteId, before: voice.before, after: voice.after, text: [voice.committed, voice.interim].filter(Boolean).join(" ") };
+        const seg = { noteId: voice.noteId, before: voice.before, after: voice.after, text: [voice.committed, voice.interim].filter(Boolean).join(" "), ai: voice.ai };
         voice.rec = null;
         voice.interim = "";
         voice.noteId = null;
@@ -2599,7 +2675,7 @@
 
   // Setelah rekam suara selesai: AI merapikan teks dikte (bila diaktifkan), dengan tombol Urungkan.
   async function polishVoice(seg) {
-    if (!prefs.aiVoice || seg.text.trim().length < 20) return;
+    if (!(prefs.aiVoice || seg.ai) || seg.text.trim().length < 20) return;
     const n = notes.find((x) => x.id === seg.noteId);
     if (!n || n.trashed) return;
     const lead = seg.before && !/\s$/.test(seg.before) ? " " : "";
@@ -2617,18 +2693,21 @@
     const body = (m ? m[2] : d.text).trim();
     if (!body) return;
     if (n.content !== dictated) return toast("Catatan berubah saat AI bekerja; hasil AI tidak dipasang.");
-    const prev = { content: n.content, title: n.title };
+    const prev = { content: n.content, title: n.title, original: n.voiceOriginal || null };
     n.content = seg.before + lead + body + seg.after;
     if (!n.title && title) n.title = title.slice(0, 140);
+    if (state.features.v10) n.voiceOriginal = seg.text.slice(0, 20000); // simpan ucapan asli untuk bagian "Teks Asli Rekaman"
     touch(n);
     if (state.activeId === n.id) {
       el.contentInput.value = n.content;
       el.titleInput.value = n.title;
+      renderEditor();
     }
     renderList();
     toast("✨ Rekaman dirapikan oleh AI", "Urungkan", () => {
       n.content = prev.content;
       n.title = prev.title;
+      n.voiceOriginal = prev.original;
       touch(n);
       if (state.activeId === n.id) {
         el.contentInput.value = n.content;
@@ -3078,6 +3157,7 @@
     el.contentInput.value = n.content;
     cb.closest("li").classList.toggle("done", cb.checked);
     touch(n);
+    renderAccordions(n);
   });
 
   el.tagInput.addEventListener("keydown", (e) => {
@@ -3124,6 +3204,38 @@
     stamp(n);
     persist(n);
     render();
+  });
+
+  el.editToggleBtn.addEventListener("click", () => {
+    const n = activeNote();
+    if (!n || n.trashed) return;
+    state.mode = state.mode === "edit" ? "preview" : "edit";
+    renderMode();
+    if (state.mode === "edit") el.contentInput.focus();
+  });
+  el.voiceNoteBtn.addEventListener("click", () => (voice.active ? stopDictation() : startDictation({ ai: true })));
+  el.origAcc.addEventListener("toggle", () => (accOpen.orig = el.origAcc.open));
+  el.taskAcc.addEventListener("toggle", () => (accOpen.task = el.taskAcc.open));
+  el.taskBody.addEventListener("change", (e) => {
+    const cb = e.target.closest('input[type="checkbox"][data-line]');
+    const n = activeNote();
+    if (!cb || !n || n.trashed) return;
+    const lines = n.content.split("\n");
+    const i = Number(cb.dataset.line);
+    lines[i] = lines[i].replace(/\[([ xX])\]/, cb.checked ? "[x]" : "[ ]");
+    n.content = lines.join("\n");
+    el.contentInput.value = n.content;
+    touch(n);
+    renderMode();
+    renderAccordions(n);
+  });
+  el.titleInput.addEventListener("input", autosizeTitle);
+  el.titleInput.addEventListener("paste", (e) => {
+    const t = (e.clipboardData && e.clipboardData.getData("text")) || "";
+    if (!/\n/.test(t)) return;
+    e.preventDefault();
+    el.titleInput.setRangeText(t.replace(/\s*\n+\s*/g, " "), el.titleInput.selectionStart, el.titleInput.selectionEnd, "end");
+    el.titleInput.dispatchEvent(new Event("input"));
   });
 
   el.modeSeg.addEventListener("click", (e) => {
@@ -3554,6 +3666,7 @@
         /* biarkan catatan lokal tetap ada untuk dicoba lagi nanti */
       }
       await detectFeatures();
+      await detectVoiceColumn();
       const server = await fetchNotes();
       const serverFolders = await fetchFolders();
       if (state.user !== user) return; // keluar saat sedang memuat

@@ -66,6 +66,7 @@ catatan/
 │   ├── migrations/007_pesan_terjadwal.sql  # pesan terjadwal ke grup WhatsApp
 │   ├── migrations/008_reservasi_admin.sql  # menu, DP, catatan admin pada reservasi
 │   ├── migrations/009_kuota_ai.sql  # kuota pemakaian AI per pengguna per hari
+│   ├── migrations/010_teks_asli_rekaman.sql  # kolom voice_original (Teks Asli Rekaman)
 │   └── email-templates/               # template email berbahasa Indonesia (tempel manual di Supabase)
 └── vercel.json          # konfigurasi hosting Vercel
 ```
@@ -89,6 +90,8 @@ catatan/
    untuk **pesan terjadwal ke grup WhatsApp** (tanpa migrasi 007, tab Kirim cepat dan Impor chat tetap bisa dipakai).
    Terakhir [`supabase/migrations/008_reservasi_admin.sql`](supabase/migrations/008_reservasi_admin.sql)
    untuk **DP, daftar menu, dan catatan admin** pada reservasi (tanpa migrasi 008, tabel manajemen tetap jalan tanpa DP dan catatan).
+   Opsional: [`supabase/migrations/010_teks_asli_rekaman.sql`](supabase/migrations/010_teks_asli_rekaman.sql)
+   untuk bagian lipat **Teks Asli Rekaman** (migrasi 009 untuk kuota AI dijelaskan di bagian AI).
 3. **Isi konfigurasi:** buka **Project Settings → API Keys**, salin *Project URL* dan kunci
    **anon / publishable** ke `public/config.js`:
    ```js
@@ -233,6 +236,10 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
   Ini **bukan layanan darurat resmi**: tidak ada pengiriman SMS/telepon dan tidak ada notifikasi saat aplikasi tertutup. Untuk keadaan darurat sungguhan hubungi 112.
 - Pesan **tidak dienkripsi ujung ke ujung**: administrator proyek Supabase secara teknis dapat membacanya. Hapus pesan lewat tombol "hapus" hanya terlihat di perangkat lain setelah memuat ulang
   (peristiwa DELETE sengaja tidak dilanggan, karena tidak bisa disaring per pengguna).
+
+### Tata letak catatan
+
+Tampilan utama memakai tiga kolom: sidebar (menu, pohon folder, tag), daftar catatan (cari, Tulis/Rekam/Gabung, dikelompokkan per tanggal), dan editor berupa kartu besar. Catatan yang sudah ada terbuka dalam **mode baca**; tombol **Edit** beralih ke mode tulis (⌘E), sedangkan catatan baru langsung mode tulis. Di bawah judul ada bagian lipat **Teks Asli Rekaman** (hasil dikte sebelum dirapikan AI; perlu migrasi [`010_teks_asli_rekaman.sql`](supabase/migrations/010_teks_asli_rekaman.sql), tanpa migrasi ini fitur lain tetap jalan) dan **Daftar Tugas (x/y Selesai)** yang diambil dari baris `- [ ]` di isi catatan. Tema gelap memakai palet biru tua dengan aksen indigo dan cyan.
 
 ### AI (parafrase singkat dan rapikan rekaman)
 

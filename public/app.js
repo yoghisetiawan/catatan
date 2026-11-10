@@ -2486,7 +2486,7 @@
   async function aiCall(mode, text) {
     if (!prefs.aiOk) {
       const ok = confirm(
-        "Teks yang diproses akan dikirim lewat server Catatan ke layanan AI (Anthropic), lalu hasilnya dikembalikan ke sini. " +
+        "Teks yang diproses akan dikirim lewat server Catatan ke layanan AI (Google Gemini), lalu hasilnya dikembalikan ke sini. " +
           "Catatan tidak menyimpan teks itu di luar catatanmu. Lanjutkan?"
       );
       if (!ok) throw new Error("Dibatalkan.");

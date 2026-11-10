@@ -55,7 +55,7 @@ catatan/
 │   └── icons/
 ├── api/
 │   ├── news.py          # Vercel Function (Python): mengambil RSS berita untuk menu Berita terkini
-│   └── ai.py            # Vercel Function (Python): parafrase dan rapikan rekaman lewat API Claude
+│   └── ai.py            # Vercel Function (Python): parafrase dan rapikan rekaman lewat Gemini API
 ├── supabase/
 │   ├── schema.sql                     # tabel notes + kebijakan RLS
 │   ├── migrations/002_fitur_baru.sql  # gambar, berbagi, riwayat, realtime, hapus akun
@@ -236,16 +236,17 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
 
 ### AI (parafrase singkat dan rapikan rekaman)
 
-AI berjalan lewat [`api/ai.py`](api/ai.py) (Vercel Function) yang memanggil API Claude. **Fitur ini tidak aktif sebelum kamu menyiapkan tiga hal:**
+AI berjalan lewat [`api/ai.py`](api/ai.py) (Vercel Function) yang memanggil **Gemini API (Google)**. **Fitur ini tidak aktif sebelum kamu menyiapkan dua hal:**
 
-1. **Kunci API:** buat kunci di https://console.anthropic.com (pemakaian AI **berbayar** per permintaan, ditagih ke akunmu). Di Vercel buka *Project → Settings → Environment Variables*, tambahkan
-   `ANTHROPIC_API_KEY` dengan kunci itu (Production), lalu **Redeploy**. Kunci hanya tersimpan di Vercel: tidak masuk repo dan tidak pernah dikirim ke browser.
+1. **Kunci API:** buat kunci di https://aistudio.google.com/apikey (ada paket gratis dengan batas; di luar itu berbayar). Di Vercel buka *Project → Settings → Environment Variables*, tambahkan
+   `GEMINI_API_KEY` dengan kunci itu (Production; nama `GOOGLE_API_KEY` juga dikenali), lalu **Redeploy** (variabel baru hanya terbaca oleh deploy yang dibuat sesudahnya).
+   Kunci hanya tersimpan di Vercel: tidak masuk repo dan tidak pernah dikirim ke browser.
 2. **Migrasi 009** ([`009_kuota_ai.sql`](supabase/migrations/009_kuota_ai.sql)) di Supabase SQL Editor: tabel kuota harian. Tanpa migrasi ini fungsi menolak semua permintaan (gagal tertutup, supaya biaya tidak tak terkendali).
-3. (Opsional) `AI_DAILY_LIMIT` (bawaan **40** permintaan per pengguna per hari), `AI_MODEL` (bawaan `claude-haiku-5-5`, model kecil yang cepat dan murah).
+3. (Opsional) `AI_DAILY_LIMIT` (bawaan **40** permintaan per pengguna per hari), `AI_MODEL` (bawaan `gemini-flash-latest`, model Flash terbaru yang cepat dan murah; isi nama model lain bila perlu, mis. `gemini-2.5-flash`).
 
 Keamanan dan privasi:
-- Hanya pengguna yang masuk yang bisa memakainya: fungsi memeriksa token sesi Supabase, lalu memanggil `ai_take_quota()` atas nama pengguna **sebelum** memanggil API Claude. Batas teks: 6.000 karakter (parafrase) dan 12.000 karakter (rekaman).
-- Teks dikirim ke Anthropic hanya saat pengguna memakai fitur (konfirmasi sekali di awal). Catatan tidak menyimpan teks itu di luar catatan pengguna; galat dari penyedia tidak diteruskan ke browser.
+- Hanya pengguna yang masuk yang bisa memakainya: fungsi memeriksa token sesi Supabase, lalu memanggil `ai_take_quota()` atas nama pengguna **sebelum** memanggil Gemini. Batas teks: 6.000 karakter (parafrase) dan 12.000 karakter (rekaman).
+- Teks dikirim ke Google hanya saat pengguna memakai fitur (konfirmasi sekali di awal). Catatan tidak menyimpan teks itu di luar catatan pengguna; galat dari penyedia tidak diteruskan ke browser. Pada paket gratis Gemini API, Google dapat memakai data permintaan untuk meningkatkan produknya (lihat ketentuan Gemini API); pakai paket berbayar bila itu tidak diinginkan.
 - Teks pengguna dikirim sebagai data di dalam tag `<teks>` dengan instruksi tegas untuk mengabaikan perintah di dalamnya (mengurangi prompt injection), dan hasilnya selalu ditampilkan atau dapat diurungkan sebelum/sesudah dipakai.
 - Rapikan rekaman otomatis dimatikan secara bawaan; nyalakan lewat kotak centang di bar rekam atau di Pengaturan akun. AI bisa keliru: periksa hasilnya.
 

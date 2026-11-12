@@ -149,6 +149,9 @@
     voiceNoteBtn: $("#voiceNoteBtn"),
     origAcc: $("#origAcc"),
     origText: $("#origText"),
+    origCopy: $("#origCopy"),
+    origUse: $("#origUse"),
+    aiChip: $("#aiChip"),
     taskAcc: $("#taskAcc"),
     taskBody: $("#taskBody"),
     taskSummary: $("#taskSummary"),
@@ -1266,6 +1269,8 @@
   function renderAccordions(n) {
     const hasOrig = !!n.voiceOriginal;
     el.origAcc.classList.toggle("hidden", !hasOrig);
+    el.aiChip.classList.toggle("hidden", !hasOrig);
+    el.origUse.classList.toggle("hidden", !!n.trashed);
     if (hasOrig) {
       el.origText.textContent = n.voiceOriginal;
       el.origAcc.open = accOpen.orig;
@@ -2416,6 +2421,18 @@
   // Memakai Web Speech API bawaan browser (Chrome, Edge, Safari). Di Chrome/Edge audio diproses
   // oleh layanan pengenalan suara milik Google/Microsoft; Catatan sendiri tidak menyimpan audionya.
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const LISTEN_TXT = "Mendengarkan… ucapkan “cukup” untuk berhenti";
+  // Kata penutup: bila hasil ucapan berakhir dengan "cukup", kata itu dibuang dan rekaman berhenti.
+  // "tidak cukup", "kurang cukup", dst. dianggap kalimat biasa, bukan perintah.
+  const STOP_NEG = new Set(["tidak", "tak", "kurang", "belum", "bukan", "nggak", "gak", "ga"]);
+  function stripStopWord(piece) {
+    const m = piece.match(/^(.*?)[\s,.!?;:-]*\bcukup[\s.!?]*$/i);
+    if (!m) return { text: piece, stop: false };
+    const before = m[1].trim();
+    const last = (before.split(/\s+/).pop() || "").toLowerCase().replace(/[^a-z]/g, "");
+    if (before && STOP_NEG.has(last)) return { text: piece, stop: false };
+    return { text: before, stop: true };
+  }
   const voice = { rec: null, active: false, noteId: null, before: "", after: "", committed: "", interim: "", quiet: 0, heard: false };
 
   function applyDictation() {
@@ -2445,7 +2462,7 @@
     if (mic) mic.classList.toggle("rec-on", on);
     el.fabMic.classList.toggle("rec-on", on);
     el.fabMic.title = on ? "Berhenti merekam" : "Rekam suara jadi catatan";
-    if (on) el.recText.textContent = "Mendengarkan… bicaralah";
+    if (on) el.recText.textContent = LISTEN_TXT;
   }
 
   function startDictation(opts = {}) {
@@ -2471,19 +2488,25 @@
 
     rec.onresult = (e) => {
       let interim = "";
+      let stop = false;
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
         const t = r[0].transcript;
         if (r.isFinal) {
-          const piece = t.trim();
-          if (piece) voice.committed += (voice.committed ? " " : "") + piece;
+          const s = stripStopWord(t.trim());
+          if (s.text) voice.committed += (voice.committed ? " " : "") + s.text;
+          if (s.stop) stop = true;
         } else interim += t;
       }
-      voice.interim = interim.trim();
+      voice.interim = stop ? "" : interim.trim();
       voice.heard = true;
       voice.quiet = 0;
-      el.recText.textContent = voice.interim ? "…" + voice.interim.slice(-60) : "Mendengarkan… bicaralah";
+      el.recText.textContent = voice.interim ? "…" + voice.interim.slice(-60) : LISTEN_TXT;
       applyDictation();
+      if (stop) {
+        toast("Rekaman dihentikan (kata “cukup”)");
+        stopDictation();
+      }
     };
     rec.onerror = (e) => {
       const msg = {
@@ -2696,7 +2719,11 @@
     const prev = { content: n.content, title: n.title, original: n.voiceOriginal || null };
     n.content = seg.before + lead + body + seg.after;
     if (!n.title && title) n.title = title.slice(0, 140);
-    if (state.features.v10) n.voiceOriginal = seg.text.slice(0, 20000); // simpan ucapan asli untuk bagian "Teks Asli Rekaman"
+    if (state.features.v10) {
+      // ucapan asli disimpan terpisah dari hasil AI; rekaman berikutnya pada catatan yang sama ditambahkan, bukan menimpa
+      n.voiceOriginal = ((prev.original ? prev.original + "\n\n" : "") + seg.text).slice(0, 20000);
+      accOpen.orig = true; // tampilkan langsung agar terlihat mana yang asli dan mana hasil AI
+    }
     touch(n);
     if (state.activeId === n.id) {
       el.contentInput.value = n.content;
@@ -2704,7 +2731,7 @@
       renderEditor();
     }
     renderList();
-    toast("✨ Rekaman dirapikan oleh AI", "Urungkan", () => {
+    toast(state.features.v10 ? "✨ Dirapikan AI. Ucapan aslinya ada di “Teks Asli Rekaman”." : "✨ Dirapikan AI (teks asli tidak tersimpan: jalankan migrasi 010)", "Urungkan", () => {
       n.content = prev.content;
       n.title = prev.title;
       n.voiceOriginal = prev.original;
@@ -3215,6 +3242,38 @@
   });
   el.voiceNoteBtn.addEventListener("click", () => (voice.active ? stopDictation() : startDictation({ ai: true })));
   el.origAcc.addEventListener("toggle", () => (accOpen.orig = el.origAcc.open));
+  el.origCopy.addEventListener("click", async () => {
+    const n = activeNote();
+    if (!n || !n.voiceOriginal) return;
+    try {
+      await navigator.clipboard.writeText(n.voiceOriginal);
+      toast("Teks asli rekaman disalin");
+    } catch {
+      toast("Tidak bisa menyalin. Blok teksnya lalu salin manual.");
+    }
+  });
+  el.origUse.addEventListener("click", () => {
+    const n = activeNote();
+    if (!n || n.trashed || !n.voiceOriginal) return;
+    const prev = { content: n.content, original: n.voiceOriginal };
+    n.content = n.voiceOriginal;
+    n.voiceOriginal = null; // isi catatan kini sama dengan ucapan asli, bukan hasil AI
+    accOpen.orig = false;
+    el.contentInput.value = n.content;
+    touch(n);
+    renderEditor();
+    renderList();
+    toast("Isi catatan diganti dengan teks asli rekaman", "Urungkan", () => {
+      n.content = prev.content;
+      n.voiceOriginal = prev.original;
+      touch(n);
+      if (state.activeId === n.id) {
+        el.contentInput.value = n.content;
+        renderEditor();
+      }
+      renderList();
+    });
+  });
   el.taskAcc.addEventListener("toggle", () => (accOpen.task = el.taskAcc.open));
   el.taskBody.addEventListener("change", (e) => {
     const cb = e.target.closest('input[type="checkbox"][data-line]');
@@ -3230,6 +3289,17 @@
     renderAccordions(n);
   });
   el.titleInput.addEventListener("input", autosizeTitle);
+  if (window.ResizeObserver) {
+    // lebar judul berubah (editor baru tampil, jendela diubah): hitung ulang tingginya
+    let lastW = 0;
+    new ResizeObserver(() => {
+      const w = el.titleInput.clientWidth;
+      if (w && w !== lastW) {
+        lastW = w;
+        autosizeTitle();
+      }
+    }).observe(el.titleInput);
+  }
   el.titleInput.addEventListener("paste", (e) => {
     const t = (e.clipboardData && e.clipboardData.getData("text")) || "";
     if (!/\n/.test(t)) return;

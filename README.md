@@ -214,6 +214,8 @@ tampilan: server Supabase tetap menerima pendaftaran email lewat API, dan tidak 
   (tab di latar belakang boleh, tapi browser bisa menunda hingga sekitar semenit). Tidak ada server push: kalau aplikasi tertutup,
   pengingat yang terlewat berbunyi begitu aplikasi dibuka lagi. Notifikasi sistem butuh izin dari browser.
 - **Rekam suara** memakai Web Speech API bawaan browser (Chrome, Edge, Safari; Firefox belum mendukung, tombolnya disembunyikan).
+- **Berhenti dengan ucapan:** katakan **“cukup”** di akhir kalimat (atau sendirian) dan rekaman berhenti; kata “cukup” itu tidak ikut tertulis. Frasa seperti “tidak cukup”, “kurang cukup”, atau “belum cukup” dianggap kalimat biasa. “Cukup” di tengah kalimat tidak memicu apa pun. Tombol Berhenti tetap ada.
+- **Teks asli dipisah dari hasil AI:** bila rekaman dirapikan AI, isi catatan berisi hasil AI (diberi label ✨ *Hasil rapikan AI*), sedangkan ucapan aslinya disimpan terpisah di bagian lipat **Teks Asli Rekaman** (perlu migrasi 010). Rekaman berikutnya di catatan yang sama ditambahkan ke teks asli, tidak menimpa. Di sana ada tombol *Salin teks asli* dan *Pakai teks asli* (mengganti isi catatan dengan ucapan asli; bisa diurungkan).
   Di Chrome/Edge audio diproses oleh layanan pengenalan suara milik penyedia browser, bukan oleh Catatan, dan Catatan tidak menyimpan audionya.
   Header `Permissions-Policy` di `vercel.json` mengizinkan mikrofon hanya untuk situs ini.
 

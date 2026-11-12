@@ -316,6 +316,7 @@
           <details class="ed-acc hidden" id="origAcc">
             <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg><span>Teks Asli Rekaman</span><svg class="acc-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
             <div class="acc-body" id="origText"></div>
+            <div class="acc-actions"><button type="button" class="acc-btn" id="origCopy">Salin teks asli</button><button type="button" class="acc-btn warn" id="origUse" title="Ganti isi catatan dengan teks asli rekaman (bisa diurungkan)">Pakai teks asli</button></div>
           </details>
           <details class="ed-acc hidden" id="taskAcc">
             <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span id="taskSummary">Daftar Tugas</span><svg class="acc-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
@@ -323,6 +324,7 @@
           </details>
 
           <div class="ed-card">
+            <span class="ed-ai-chip hidden" id="aiChip" title="Isi catatan ini dirapikan oleh AI dari rekaman suara. Ucapan aslinya ada di bagian Teks Asli Rekaman di atas.">✨ Hasil rapikan AI</span>
             <button class="ed-copy" id="copyBtn" title="Salin isi catatan" aria-label="Salin isi catatan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Salin</span></button>
             <div class="format-bar" id="formatBar" role="toolbar" aria-label="Format teks">
             <button data-fmt="bold" title="Tebal (⌘B)"><b>B</b></button>
@@ -364,7 +366,7 @@
             <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
             <div class="rec-bar hidden" id="recBar" role="status">
               <span class="rec-dot"></span>
-              <span id="recText">Mendengarkan… bicaralah</span>
+              <span id="recText">Mendengarkan… ucapkan “cukup” untuk berhenti</span>
               <label class="rec-ai" title="Setelah selesai, AI merapikan hasil dikte (tanda baca, kata pengisi, judul)"><input type="checkbox" id="recAi" /> ✨ Rapikan dengan AI</label>
               <button class="btn-rec-stop" id="recStopBtn" type="button">Berhenti</button>
             </div>
